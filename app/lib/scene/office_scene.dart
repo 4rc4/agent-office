@@ -5,7 +5,9 @@ import 'package:flutter/widgets.dart';
 import '../state/seat_state.dart';
 import 'office_painter.dart';
 import 'scene_layout.dart';
+import 'scene_theme.dart';
 
+export 'scene_theme.dart';
 export 'scene_layout.dart'
     show
         SceneTarget,
@@ -77,6 +79,7 @@ class OfficeScene extends StatelessWidget {
     required this.onTap,
     this.onTapEmpty,
     this.gaugeLevels = const [0, 0, 0],
+    this.theme = SceneTheme.day,
   });
 
   final OfficeSnapshot snapshot;
@@ -86,6 +89,9 @@ class OfficeScene extends StatelessWidget {
 
   /// Usage meter levels 0..1 in Seat.values order; all empty by default.
   final List<double> gaugeLevels;
+
+  /// Lighting; v1 ignores it, the themed scene honours it.
+  final SceneTheme theme;
 
   @override
   Widget build(BuildContext context) {
