@@ -60,7 +60,11 @@ try {
   if ($events1.Count -eq 0) {
     Write-Fail ("run1 produced no JSON lines (exit {0}); stderr: {1}" -f $run1.ExitCode, (Get-Snippet (Get-TextContent $run1.StdErr)))
   } else {
-    Write-Pass ("run1: {0} JSON lines in {1}s, exit {2}" -f $events1.Count, $run1.Seconds, $run1.ExitCode)
+    if ($run1.ExitCode -eq 0) {
+      Write-Pass ("run1: {0} JSON lines in {1}s, exit 0" -f $events1.Count, $run1.Seconds)
+    } else {
+      Write-Fail ("run1 exited with {0} after {1} JSON lines in {2}s" -f $run1.ExitCode, $events1.Count, $run1.Seconds)
+    }
     Write-Info ('run1 event types: ' + ((Get-CodexEventTypes $events1) -join ', '))
 
     $started = $events1 | Where-Object { (Get-Prop $_ 'type') -eq 'thread.started' } | Select-Object -First 1
@@ -77,7 +81,15 @@ try {
       Write-Pass ('turn.completed seen; usage: ' + (Get-Snippet ($usage | ConvertTo-Json -Compress -Depth 3) 120))
     } else {
       $failed = $events1 | Where-Object { (Get-Prop $_ 'type') -in @('turn.failed', 'error') } | Select-Object -Last 1
-      Write-Fail ('no turn.completed event; last error: ' + (Get-Snippet ($failed | ConvertTo-Json -Compress -Depth 4)))
+      # Show the human message, not the JSON wrapper: codex nests the API error
+      # as a JSON string inside error.message.
+      $errorText = [string](Get-Prop (Get-Prop $failed 'error') 'message')
+      if ($errorText -eq '') { $errorText = [string](Get-Prop $failed 'message') }
+      if ($errorText -match '"message"\s*:\s*"([^"]+)"') { $errorText = $Matches[1] }
+      Write-Fail ('no turn.completed event; last error: ' + (Get-Snippet $errorText 200))
+      if ($errorText -match '(?i)model.*not supported.*ChatGPT') {
+        Write-Info 'fix: in %USERPROFILE%\.codex\config.toml comment out the "model = ..." line (or pick a ChatGPT-supported model with /model inside codex), then rerun'
+      }
     }
   }
 
