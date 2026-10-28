@@ -9,11 +9,9 @@ Piksel bir ofiste çalışan AI çalışanlar: **Claude** (beyin), **Codex / GPT
 
 ## Bu klasör ne?
 
-- Agent Office'in **geçici yuvası**. Catudy'nin içinde doğuyor; Faz 1 bitince **kendi
-  reposuna taşınır** (`tray_manager` Flutter 3.47 istiyor, Catudy 3.41.2'de).
-- Catudy koduyla hiçbir bağı yok. Kök `analysis_options.yaml` bu klasörü hariç tutar,
-  Catudy CI'ı (`flutter analyze`) burayı görmez.
-- Catudy kuralları (CRLF, release lock, branch düzeni) burada da geçerli; bkz. `AGENTS.md`.
+- Agent Office'in kendi reposu. Catudy'den `git subtree split` ile taşındı; Catudy koduyla bağı yok.
+- Çalıştırmak için ajanların çalışacağı proje klasörüne gir ve bu repodaki `run_office.ps1`'i oradan çağır
+  (`--cwd` o klasör olur).
 
 ## Klasörler
 

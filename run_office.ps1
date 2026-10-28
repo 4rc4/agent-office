@@ -6,14 +6,17 @@
     .\run_office.ps1 ask claude "Say hello"            # one desk alone
     .\run_office.ps1 run "Add a dark mode toggle"      # Claude plans, workers run
     .\run_office.ps1 reconcile                         # resume after a restart
-  Defaults: --cwd is the repository above agent_office (Catudy), --brain is
-  agent_office\brain\brain.md. Any other office_core option can be appended.
+  Defaults: --cwd is the folder you run this script from (the project the
+  agents should work in), --brain is brain\brain.md next to this script, and
+  --claude/--codex are resolved from PATH (npm installs them as .cmd files).
+  Any other office_core option can be appended.
   First run: dart pub get, and sqlite3.dll is downloaded from sqlite.org into
   packages\office_core\.local (the plain Dart CLI needs it on Windows).
 #>
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
+$invokedFrom = (Get-Location).Path
 $pkg = Join-Path $root 'packages\office_core'
 $local = Join-Path $pkg '.local'
 
@@ -57,7 +60,13 @@ try {
   $env:OFFICE_SQLITE_DLL = Ensure-Sqlite
   $cli = @()
   if ($Args) { $cli += $Args }
-  if ($cli -notcontains '--cwd') { $cli += @('--cwd', (Split-Path $root -Parent)) }
+  if ($cli -notcontains '--cwd') { $cli += @('--cwd', $invokedFrom) }
+  foreach ($tool in @('claude', 'codex')) {
+    if ($cli -notcontains "--$tool") {
+      $found = Get-Command $tool -ErrorAction SilentlyContinue
+      if ($found) { $cli += @("--$tool", $found.Source) }
+    }
+  }
   if ($cli -notcontains '--brain') { $cli += @('--brain', (Join-Path $root 'brain\brain.md')) }
   Write-Host ("office_core " + ($cli -join ' '))
   & $dartExe run bin/office_core.dart @cli

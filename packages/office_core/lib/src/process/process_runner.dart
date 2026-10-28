@@ -63,7 +63,7 @@ class DartProcessRunner implements ProcessRunner {
     Map<String, String>? environment,
   }) async {
     final process = await Process.start(
-      executable,
+      resolveExecutable(executable, environment: environment),
       arguments,
       workingDirectory: workingDirectory,
       environment: childEnvironment(environment),
@@ -72,6 +72,41 @@ class DartProcessRunner implements ProcessRunner {
     );
     return _DartRunningProcess(process);
   }
+}
+
+/// Turns a bare command name into the file Process.start can launch.
+///
+/// Without a shell, Windows only finds `.exe` files; npm installs `claude`
+/// and `codex` as `claude.cmd` / `codex.cmd`, so a bare name fails with
+/// "The system cannot find the file specified". This walks PATH (from
+/// [environment] or the process) and tries every PATHEXT extension, the way
+/// cmd.exe would. A name that already points at an existing file, or that
+/// contains a path separator, is returned unchanged; so is a name that is
+/// not found (Process.start then reports the real error).
+String resolveExecutable(String name, {Map<String, String>? environment}) {
+  if (name.contains('/') || name.contains(r'\') || File(name).existsSync()) {
+    return name;
+  }
+  final env = {...Platform.environment, ...?environment};
+  final pathValue = env['PATH'] ?? env['Path'] ?? '';
+  final separator = Platform.isWindows ? ';' : ':';
+  final extensions = Platform.isWindows
+      ? [
+          '',
+          ...(env['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD')
+              .split(';')
+              .where((e) => e.isNotEmpty)
+              .map((e) => e.toLowerCase()),
+        ]
+      : [''];
+  for (final dir in pathValue.split(separator)) {
+    if (dir.isEmpty) continue;
+    for (final ext in extensions) {
+      final candidate = '$dir${Platform.pathSeparator}$name$ext';
+      if (File(candidate).existsSync()) return candidate;
+    }
+  }
+  return name;
 }
 
 class _DartRunningProcess implements RunningProcess {
