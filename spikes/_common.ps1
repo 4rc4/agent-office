@@ -93,7 +93,11 @@ function Start-SpikeProcess {
   if ($StdOut) { $params.RedirectStandardOutput = $StdOut }
   if ($StdErr) { $params.RedirectStandardError = $StdErr }
   if ($WorkingDirectory) { $params.WorkingDirectory = $WorkingDirectory }
-  return Start-Process @params
+  $proc = Start-Process @params
+  # Windows PowerShell 5.1: without touching .Handle right away, .ExitCode
+  # later reads as $null (a known Start-Process quirk).
+  if ($proc) { $null = $proc.Handle }
+  return $proc
 }
 
 # Kills a process and everything it started (no signals on Windows).

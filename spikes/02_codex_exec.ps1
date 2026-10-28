@@ -26,7 +26,8 @@ Write-Info ('codex --version: ' + (Get-FirstLine $ver.StdOut))
 $login = Invoke-Spike -Exe $codex -Arguments @('login', 'status') -Name '02_codex_login_status' -TimeoutSec 60
 $loginLine = Get-FirstLine $login.StdOut
 if ($loginLine -eq '(empty)') { $loginLine = Get-FirstLine $login.StdErr }
-if ($login.ExitCode -eq 0 -and $loginLine -match '(?i)logged in' -and $loginLine -notmatch '(?i)not logged') {
+$loginExitOk = ($null -eq $login.ExitCode) -or ($login.ExitCode -eq 0)
+if ($loginExitOk -and $loginLine -match '(?i)logged in' -and $loginLine -notmatch '(?i)not logged') {
   Write-Pass "codex login status: $loginLine"
 } else {
   Write-Fail ('codex login status exit {0}: {1} (run codex login first)' -f $login.ExitCode, $loginLine)
