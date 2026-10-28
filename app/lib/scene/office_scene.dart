@@ -10,14 +10,18 @@ import 'scene_theme.dart';
 export 'scene_theme.dart';
 export 'scene_layout.dart'
     show
+        IRect,
+        SceneLayout,
+        SeatPlacement,
         SceneTarget,
         SeatTarget,
         WhiteboardTarget,
         MailboxTarget,
         CoffeeTarget,
-        CabinetTarget;
+        CabinetTarget,
+        ReceptionTarget;
 
-/// How the 320x180 scene fits into an available size: the largest integer
+/// How the 480x270 scene fits into an available size: the largest integer
 /// scale that fits (at least 1), centred and letterboxed.
 class SceneFit {
   const SceneFit({required this.scale, required this.origin});
@@ -62,15 +66,26 @@ class SceneFit {
   Offset fromScene(Offset scene) =>
       Offset(origin.dx + scene.dx * scale, origin.dy + scene.dy * scale);
 
+  /// A scene rectangle (for example `SceneLayout.reception`) in widget-local
+  /// coordinates, so a popup can be anchored to the object it belongs to.
+  Rect sceneRectToWidget(IRect r) => Rect.fromLTWH(
+    origin.dx + r.x * scale,
+    origin.dy + r.y * scale,
+    (r.w * scale).toDouble(),
+    (r.h * scale).toDouble(),
+  );
+
   /// What a widget-local tap landed on.
   SceneTarget? hitTest(Offset local) => SceneLayout.hitTest(toScene(local));
 }
 
-/// The pixel office. Stateless: the parent owns the snapshot and the ticker.
+/// The pixel office. Stateless: the parent owns the snapshot, the ticker and
+/// the theme.
 ///
 /// [tick] advances every 100 ms while something animates; the frame is
-/// `tick % 4`. Taps on furniture call [onTap] with the [SceneTarget]; taps on
-/// the floor or wall call [onTapEmpty] when given.
+/// `tick % 4`. [theme] picks the lighting: day or night. Taps on furniture
+/// call [onTap] with the [SceneTarget]; taps on the floor or wall call
+/// [onTapEmpty] when given.
 class OfficeScene extends StatelessWidget {
   const OfficeScene({
     super.key,
@@ -90,7 +105,8 @@ class OfficeScene extends StatelessWidget {
   /// Usage meter levels 0..1 in Seat.values order; all empty by default.
   final List<double> gaugeLevels;
 
-  /// Lighting; v1 ignores it, the themed scene honours it.
+  /// Day or night lighting; the parent follows the clock
+  /// (`SceneTheme.forTime`) or pins one.
   final SceneTheme theme;
 
   @override
@@ -128,6 +144,7 @@ class OfficeScene extends StatelessWidget {
                 scale: fit.scale,
                 origin: fit.origin,
                 gaugeLevels: gaugeLevels,
+                theme: theme,
               ),
             ),
           ),

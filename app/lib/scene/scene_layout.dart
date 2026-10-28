@@ -24,6 +24,17 @@ class IRect {
       p.dx >= x && p.dx < x + w && p.dy >= y && p.dy < y + h;
 
   @override
+  bool operator ==(Object other) =>
+      other is IRect &&
+      other.x == x &&
+      other.y == y &&
+      other.w == w &&
+      other.h == h;
+
+  @override
+  int get hashCode => Object.hash(x, y, w, h);
+
+  @override
   String toString() => 'IRect($x, $y, $w, $h)';
 }
 
@@ -37,6 +48,7 @@ sealed class SceneTarget {
   static const SceneTarget mailbox = MailboxTarget();
   static const SceneTarget coffee = CoffeeTarget();
   static const SceneTarget cabinet = CabinetTarget();
+  static const SceneTarget reception = ReceptionTarget();
 }
 
 /// A desk or chair; [seat] says whose.
@@ -87,8 +99,16 @@ final class CabinetTarget extends SceneTarget {
   String toString() => 'SceneTarget.cabinet';
 }
 
+/// The reception desk at the front left (where a prompt is handed in).
+final class ReceptionTarget extends SceneTarget {
+  const ReceptionTarget();
+
+  @override
+  String toString() => 'SceneTarget.reception';
+}
+
 /// Where one seat's furniture and character go. All values are scene pixels.
-/// Characters are 16 wide; `seatX/seatY` is the top-left of the seated sprite,
+/// Characters are 24 wide; `seatX/seatY` is the top-left of the seated sprite,
 /// `standX/standY` the top-left when standing beside the chair and
 /// `breakX/breakY` the top-left when standing at the coffee counter.
 class SeatPlacement {
@@ -115,6 +135,10 @@ class SeatPlacement {
     this.keyboardY,
     this.trayX,
     this.trayY,
+    this.lampX,
+    this.lampY,
+    this.mugX,
+    this.mugY,
   });
 
   final Seat seat;
@@ -137,7 +161,7 @@ class SeatPlacement {
   final int? plantX;
   final int? plantY;
 
-  /// Monitor screen box including its frame; the stand is drawn below it.
+  /// Monitor screen box including its bezel; the stand is drawn below it.
   final IRect? monitor;
 
   /// Office chair back, peeking out behind the seated character.
@@ -150,110 +174,183 @@ class SeatPlacement {
   final int? trayX;
   final int? trayY;
 
+  /// Desk lamp: bottom-centre of its base on the desk surface.
+  final int? lampX;
+  final int? lampY;
+
+  /// Coffee mug on the desk (top-left).
+  final int? mugX;
+  final int? mugY;
+
   bool get hasDesk => desk != null;
 
   /// Top of the desk surface; characters behind the desk are clipped here.
   int? get deskSurfaceTop => desk?.y;
+
+  /// The furniture a popup for this seat should sit beside: the desk, or
+  /// the visitor chair.
+  IRect get anchor => desk ?? visitorChair ?? hitRect;
 }
 
-/// The 320x180 office: named rectangles and hit testing.
+/// The 480x270 office: named rectangles and hit testing.
+///
+/// The rects a widget needs to anchor a popup are the public fields
+/// [reception], [mailbox], [whiteboard], [claudeDesk], [gptDesk],
+/// [geminiChair], [coffee] and [cabinet]; [anchorRect] picks one for a
+/// [SceneTarget]. Map them to widget space with `SceneFit.sceneRectToWidget`.
 abstract final class SceneLayout {
-  static const int width = 320;
-  static const int height = 180;
-  static const Size size = Size(320, 180);
-  static const Rect bounds = Rect.fromLTWH(0, 0, 320, 180);
+  static const int width = 480;
+  static const int height = 270;
+  static const Size size = Size(480, 270);
+  static const Rect bounds = Rect.fromLTWH(0, 0, 480, 270);
 
-  /// Wall ends here; the baseboard runs to [floorTop].
-  static const int wallBottom = 92;
-  static const int floorTop = 97;
+  /// Chair rail: plaster above, wainscoting below.
+  static const int chairRail = 98;
 
-  static const IRect door = IRect(8, 36, 30, 61);
-  static const IRect doorMat = IRect(10, 98, 26, 6);
+  /// Wall ends here; the skirting board runs to [floorTop].
+  static const int wallBottom = 146;
+  static const int floorTop = 153;
 
-  static const IRect whiteboard = IRect(64, 16, 86, 44);
-  static const int noteOriginX = 70;
-  static const int noteOriginY = 22;
-  static const int noteWidth = 16;
-  static const int noteHeight = 14;
-  static const int noteGap = 3;
+  static const IRect window = IRect(18, 16, 98, 90);
+  static const IRect curtainLeft = IRect(6, 10, 12, 108);
+  static const IRect curtainRight = IRect(116, 10, 12, 108);
+
+  /// String lights run from here to the right wall, hung at this height
+  /// (the wire sags up to five pixels below it).
+  static const int stringLightsX = 134;
+  static const int stringLightsY = 7;
+
+  static const IRect door = IRect(128, 42, 44, 104);
+  static const IRect doorMat = IRect(131, 154, 38, 8);
+
+  static const IRect whiteboard = IRect(186, 24, 128, 70);
+  static const int noteOriginX = 194;
+  static const int noteOriginY = 32;
+  static const int noteWidth = 24;
+  static const int noteHeight = 18;
+  static const int noteGap = 4;
   static const int noteColumns = 4;
   static const int maxNotes = 8;
 
-  static const IRect clock = IRect(168, 18, 15, 15);
-  static const IRect gauges = IRect(194, 18, 50, 12);
-  static const int gaugeWidth = 14;
-  static const int gaugeGap = 4;
+  static const IRect clock = IRect(330, 26, 24, 24);
+  static const IRect gauges = IRect(366, 26, 88, 24);
+  static const int gaugeWidth = 24;
+  static const int gaugeGap = 8;
 
-  static const IRect cabinet = IRect(214, 58, 22, 39);
+  static const IRect posterLandscape = IRect(330, 56, 28, 26);
+  static const IRect posterCircles = IRect(434, 58, 30, 36);
 
-  static const IRect coffeeCounter = IRect(242, 66, 72, 31);
-  static const IRect coffeeMachine = IRect(264, 44, 20, 24);
+  /// Small wall shelf with a trailing plant, between cabinet and machine.
+  static const IRect wallShelf = IRect(368, 66, 24, 4);
+
+  static const IRect cabinet = IRect(330, 90, 36, 56);
+
+  /// Tall floor plant between the main desk and the cabinet (top-left of
+  /// the leaves).
+  static const int floorPlantX = 296;
+  static const int floorPlantY = 100;
+
+  static const IRect coffeeCounter = IRect(372, 104, 102, 42);
+  static const IRect coffeeMachine = IRect(396, 72, 26, 34);
   static const List<IRect> stools = [
-    IRect(248, 98, 12, 12),
-    IRect(296, 98, 12, 12),
+    IRect(384, 156, 16, 18),
+    IRect(446, 156, 16, 18),
   ];
-  static const IRect coffeeArea = IRect(242, 44, 72, 64);
+  static const IRect coffeeArea = IRect(372, 72, 102, 92);
 
-  static const IRect receptionDesk = IRect(8, 138, 52, 22);
-  static const IRect mailboxBox = IRect(70, 128, 18, 12);
-  static const IRect mailboxArea = IRect(68, 122, 22, 38);
+  /// The coffee corner as a whole (counter, machine, stools): its hit and
+  /// anchor rect.
+  static const IRect coffee = coffeeArea;
+
+  static const IRect rug = IRect(144, 168, 170, 72);
+
+  /// Wastebasket beside the second desk.
+  static const IRect wasteBin = IRect(454, 218, 12, 15);
+
+  static const IRect receptionDesk = IRect(10, 206, 80, 34);
+
+  /// Reception desk with the lamp and papers on it: its hit and anchor rect.
+  static const IRect reception = IRect(8, 182, 84, 58);
+
+  static const IRect mailboxBox = IRect(96, 196, 24, 16);
+  static const IRect mailboxArea = IRect(94, 190, 28, 52);
+
+  /// Mailbox on its post: its hit and anchor rect.
+  static const IRect mailbox = mailboxArea;
 
   static const SeatPlacement claude = SeatPlacement(
     seat: Seat.claude,
-    hitRect: IRect(104, 90, 96, 50),
-    desk: IRect(104, 118, 96, 18),
-    deskReturn: IRect(104, 100, 20, 19),
-    plantX: 109,
-    plantY: 98,
-    monitor: IRect(120, 92, 34, 24),
-    chairBack: IRect(156, 108, 24, 10),
-    seatX: 160,
-    seatY: 102,
-    standX: 180,
-    standY: 98,
-    breakX: 250,
-    breakY: 87,
-    keyboardX: 161,
-    keyboardY: 120,
-    trayX: 186,
-    trayY: 120,
-    plateCenterX: 152,
-    plateCenterY: 141,
+    hitRect: IRect(160, 134, 140, 76),
+    desk: IRect(160, 176, 140, 28),
+    deskReturn: IRect(160, 150, 28, 28),
+    plantX: 163,
+    plantY: 134,
+    monitor: IRect(188, 138, 52, 36),
+    chairBack: IRect(240, 158, 36, 18),
+    seatX: 246,
+    seatY: 150,
+    standX: 274,
+    standY: 146,
+    breakX: 380,
+    breakY: 128,
+    keyboardX: 244,
+    keyboardY: 180,
+    trayX: 272,
+    trayY: 180,
+    lampX: 292,
+    lampY: 180,
+    mugX: 176,
+    mugY: 176,
+    plateCenterX: 230,
+    plateCenterY: 212,
   );
 
   static const SeatPlacement gpt = SeatPlacement(
     seat: Seat.gpt,
-    hitRect: IRect(216, 108, 76, 46),
-    desk: IRect(216, 128, 76, 18),
-    monitor: IRect(222, 110, 26, 20),
-    chairBack: IRect(254, 118, 24, 10),
-    seatX: 258,
-    seatY: 112,
-    standX: 276,
-    standY: 108,
-    breakX: 270,
-    breakY: 87,
-    keyboardX: 259,
-    keyboardY: 130,
-    trayX: 278,
-    trayY: 130,
-    plateCenterX: 254,
-    plateCenterY: 151,
+    hitRect: IRect(330, 164, 118, 86),
+    desk: IRect(330, 206, 116, 28),
+    monitor: IRect(340, 168, 44, 36),
+    chairBack: IRect(394, 188, 36, 18),
+    seatX: 400,
+    seatY: 180,
+    standX: 424,
+    standY: 176,
+    breakX: 410,
+    breakY: 128,
+    keyboardX: 398,
+    keyboardY: 210,
+    trayX: 424,
+    trayY: 210,
+    lampX: 438,
+    lampY: 210,
+    mugX: 386,
+    mugY: 206,
+    plateCenterX: 388,
+    plateCenterY: 242,
   );
 
   static const SeatPlacement gemini = SeatPlacement(
     seat: Seat.gemini,
-    hitRect: IRect(42, 98, 26, 34),
-    visitorChair: IRect(44, 108, 20, 20),
-    seatX: 46,
-    seatY: 106,
-    standX: 66,
-    standY: 104,
-    breakX: 290,
-    breakY: 87,
-    plateCenterX: 54,
-    plateCenterY: 133,
+    hitRect: IRect(124, 150, 34, 48),
+    visitorChair: IRect(126, 160, 30, 30),
+    seatX: 129,
+    seatY: 158,
+    standX: 98,
+    standY: 154,
+    breakX: 440,
+    breakY: 128,
+    plateCenterX: 141,
+    plateCenterY: 204,
   );
+
+  /// Claude's corner desk (the big one on the rug).
+  static const IRect claudeDesk = IRect(160, 176, 140, 28);
+
+  /// GPT's desk on the right.
+  static const IRect gptDesk = IRect(330, 206, 116, 28);
+
+  /// Gemini's visitor chair by the door.
+  static const IRect geminiChair = IRect(126, 160, 30, 30);
 
   static const List<SeatPlacement> placements = [claude, gpt, gemini];
 
@@ -263,6 +360,16 @@ abstract final class SceneLayout {
     Seat.gemini => gemini,
   };
 
+  /// The object a popup for [target] should sit beside, in scene pixels.
+  static IRect anchorRect(SceneTarget target) => switch (target) {
+    SeatTarget(:final seat) => placement(seat).anchor,
+    WhiteboardTarget() => whiteboard,
+    MailboxTarget() => mailbox,
+    CoffeeTarget() => coffee,
+    CabinetTarget() => cabinet,
+    ReceptionTarget() => reception,
+  };
+
   /// Maps a point in scene pixels to what sits there, or null for floor/wall.
   static SceneTarget? hitTest(Offset scenePoint) {
     if (!bounds.contains(scenePoint)) return null;
@@ -270,8 +377,9 @@ abstract final class SceneLayout {
       if (p.hitRect.contains(scenePoint)) return SceneTarget.seat(p.seat);
     }
     if (whiteboard.contains(scenePoint)) return SceneTarget.whiteboard;
-    if (mailboxArea.contains(scenePoint)) return SceneTarget.mailbox;
-    if (coffeeArea.contains(scenePoint)) return SceneTarget.coffee;
+    if (mailbox.contains(scenePoint)) return SceneTarget.mailbox;
+    if (reception.contains(scenePoint)) return SceneTarget.reception;
+    if (coffee.contains(scenePoint)) return SceneTarget.coffee;
     if (cabinet.contains(scenePoint)) return SceneTarget.cabinet;
     return null;
   }

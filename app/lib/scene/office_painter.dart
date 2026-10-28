@@ -4,19 +4,27 @@ import 'package:office_core/office_core.dart';
 
 import '../state/seat_state.dart';
 import 'furniture.dart';
+import 'lighting.dart';
 import 'objects.dart';
 import 'palette.dart';
 import 'pixel.dart';
+import 'room.dart';
 import 'scene_layout.dart';
+import 'scene_theme.dart';
 import 'screens.dart';
 import 'sprites.dart';
 
-/// Paints the whole office for one [OfficeSnapshot] and animation [tick].
+/// Paints the whole office for one [OfficeSnapshot], animation [tick] and
+/// [theme].
 ///
-/// Pixel art is drawn under an integer [scale] transform from [origin], so
-/// every scene pixel lands on whole device pixels. Text (name plates, speech
-/// bubbles) is laid out at device resolution on top. Repaints only when the
-/// snapshot, the tick or the geometry changed.
+/// The scene is composed in a [PixelBuffer] (so shading passes can read the
+/// floor under them) and flushed as integer-scaled rectangles from [origin]
+/// at [scale]; every scene pixel lands on whole device pixels. Text (name
+/// plates, speech bubbles) is laid out at device resolution on top. The
+/// [SceneLighting] of the theme tints the room while it is drawn: furniture
+/// in the ambient light, characters and paper in a lighter one, screens,
+/// lamps and bulbs untinted. Repaints only when the snapshot, the tick, the
+/// theme or the geometry changed.
 class OfficePainter extends CustomPainter {
   OfficePainter({
     required this.snapshot,
@@ -24,12 +32,15 @@ class OfficePainter extends CustomPainter {
     required this.scale,
     required this.origin,
     this.gaugeLevels = const [0, 0, 0],
-  });
+    this.theme = SceneTheme.day,
+  }) : lighting = SceneLighting.of(theme);
 
   final OfficeSnapshot snapshot;
   final int tick;
   final int scale;
   final Offset origin;
+  final SceneTheme theme;
+  final SceneLighting lighting;
 
   /// Usage meter levels 0..1 in Seat.values order (empty for now).
   final List<double> gaugeLevels;
@@ -42,51 +53,22 @@ class OfficePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final bg = Paint()
-      ..color = ScenePalette.background
+      ..color = Color(lighting.background)
       ..isAntiAlias = false;
     canvas.drawRect(Offset.zero & size, bg);
 
     final draws = [for (final seat in Seat.values) _resolve(seat)];
     final labels = _layoutLabels(draws);
 
+    final b = PixelBuffer(SceneLayout.width, SceneLayout.height)
+      ..tint = lighting.room;
+    _compose(b, draws, labels);
+
     canvas.save();
     canvas.translate(origin.dx, origin.dy);
     canvas.scale(scale.toDouble());
     canvas.clipRect(SceneLayout.bounds);
-    final px = Px(canvas);
-
-    paintRoom(px);
-    paintDoor(px, SceneLayout.door, SceneLayout.doorMat);
-    paintWhiteboard(px, SceneLayout.whiteboard);
-    _paintStickyNotes(px);
-    paintClock(px, SceneLayout.clock);
-    paintGauges(px, SceneLayout.gauges, [
-      CharacterPalette.claude.body,
-      CharacterPalette.gpt.body,
-      CharacterPalette.gemini.body,
-    ], gaugeLevels);
-    paintCabinet(px, SceneLayout.cabinet);
-    paintCoffeeCorner(
-      px,
-      SceneLayout.coffeeCounter,
-      SceneLayout.coffeeMachine,
-      SceneLayout.stools,
-    );
-    for (final d in draws) {
-      _paintSeat(px, d);
-    }
-    paintReceptionDesk(px, SceneLayout.receptionDesk);
-    paintMailbox(
-      px,
-      SceneLayout.mailboxBox,
-      flagUp: snapshot.lastReport != null,
-    );
-    for (final d in draws) {
-      _paintObjects(px, d);
-    }
-    for (final l in labels) {
-      l.paintBox(px);
-    }
+    b.emit(canvas);
     canvas.restore();
 
     for (final l in labels) {
@@ -101,7 +83,126 @@ class OfficePainter extends CustomPainter {
       oldDelegate.tick != tick ||
       oldDelegate.scale != scale ||
       oldDelegate.origin != origin ||
+      oldDelegate.theme != theme ||
       !listEquals(oldDelegate.gaugeLevels, gaugeLevels);
+
+  void _compose(PixelBuffer b, List<_SeatDraw> draws, List<_Label> labels) {
+    // Walls and fixtures on them.
+    paintWall(b, lighting);
+    paintWainscoting(b);
+    paintStringLights(b, lighting, frame);
+    paintCurtainRod(
+      b,
+      SceneLayout.curtainLeft.x - 2,
+      SceneLayout.curtainLeft.y - 4,
+      SceneLayout.curtainRight.right - SceneLayout.curtainLeft.x + 4,
+    );
+    paintWindow(b, SceneLayout.window, lighting);
+    paintCurtain(b, SceneLayout.curtainLeft, lighting, left: true);
+    paintCurtain(b, SceneLayout.curtainRight, lighting, left: false);
+    paintDoor(b, SceneLayout.door);
+    paintWhiteboard(b, SceneLayout.whiteboard, lighting);
+    b.withTint(lighting.lit, () => _paintStickyNotes(b));
+    paintClock(b, SceneLayout.clock);
+    paintGauges(
+      b,
+      SceneLayout.gauges,
+      [
+        CharacterPalette.claude.accent,
+        CharacterPalette.gpt.accent,
+        CharacterPalette.gemini.accent,
+      ],
+      [
+        CharacterPalette.claude.bodyDark,
+        CharacterPalette.gpt.bodyDark,
+        CharacterPalette.gemini.bodyDark,
+      ],
+      gaugeLevels,
+    );
+    paintPosterLandscape(b, SceneLayout.posterLandscape);
+    paintPosterCircles(b, SceneLayout.posterCircles);
+    paintWallShelf(b, SceneLayout.wallShelf);
+    paintCabinet(b, SceneLayout.cabinet);
+    paintCoffeeCounter(b, SceneLayout.coffeeCounter, SceneLayout.coffeeMachine);
+    paintCoffeeMachine(b, SceneLayout.coffeeMachine, frame);
+
+    // Floor, rug and the window's light.
+    paintFloor(b);
+    paintRug(b, SceneLayout.rug);
+    paintLightShaft(b, lighting);
+    paintDoorMat(b, SceneLayout.doorMat);
+
+    // Ambient occlusion under everything that stands on the floor.
+    _floorShadows(b, draws);
+
+    paintFloorPlant(b, SceneLayout.floorPlantX, SceneLayout.floorPlantY);
+
+    // People at the coffee corner stand between the counter and the stools.
+    for (final d in draws) {
+      if (d.present && d.spot == Spot.coffee) _drawCharacter(b, d);
+    }
+    for (final s in SceneLayout.stools) {
+      paintStool(b, s);
+    }
+
+    for (final d in draws) {
+      _paintSeat(b, d);
+    }
+    paintWasteBin(b, SceneLayout.wasteBin);
+    paintReceptionDesk(b, SceneLayout.receptionDesk);
+    paintDeskLamp(
+      b,
+      SceneLayout.receptionDesk.x + 14,
+      SceneLayout.receptionDesk.y + 2,
+      lighting,
+    );
+    paintMailbox(
+      b,
+      SceneLayout.mailboxBox,
+      flagUp: snapshot.lastReport != null,
+    );
+    b.withTint(lighting.lit, () {
+      for (final d in draws) {
+        _paintObjects(b, d);
+      }
+    });
+    for (final l in labels) {
+      l.paintBox(b, lighting);
+    }
+  }
+
+  void _floorShadows(PixelBuffer b, List<_SeatDraw> draws) {
+    void under(IRect r, {int dx = 4, int dy = 0, int h = 7}) {
+      b.shadow(r.x + dx, r.bottom - 1 + dy, r.w + 2, h);
+    }
+
+    under(SceneLayout.receptionDesk);
+    under(SceneLayout.coffeeCounter, dx: 3, h: 8);
+    b.shadow(
+      SceneLayout.cabinet.x + 3,
+      SceneLayout.cabinet.bottom - 1,
+      SceneLayout.cabinet.w,
+      5,
+    );
+    for (final p in SceneLayout.placements) {
+      final desk = p.desk;
+      if (desk != null) {
+        under(desk, h: 8);
+        b.shadow(desk.right, desk.y + 10, 5, desk.h - 8);
+      }
+    }
+    final post = SceneLayout.mailboxBox;
+    b.ellipseShadow(post.centerX + 2, post.bottom + 25, 7, 2);
+    for (final d in draws) {
+      if (!d.present || d.spot == Spot.chair && d.place.hasDesk) continue;
+      b.ellipseShadow(
+        d.x + spriteWidth ~/ 2 + 1,
+        d.top + spriteHeight - 1,
+        11,
+        3,
+      );
+    }
+  }
 
   _SeatDraw _resolve(Seat seat) {
     final place = SceneLayout.placement(seat);
@@ -123,77 +224,125 @@ class OfficePainter extends CustomPainter {
     );
   }
 
-  void _paintSeat(Px px, _SeatDraw d) {
+  void _drawCharacter(PixelBuffer b, _SeatDraw d, {int clipBottom = 1 << 20}) {
+    b.withTint(lighting.lit, () {
+      drawCharacter(
+        b,
+        d.x,
+        d.baseY,
+        d.pose!,
+        CharacterPalette.of(d.place.seat),
+        styleFor(d.place.seat),
+        clipBottom: clipBottom,
+      );
+    });
+  }
+
+  void _paintSeat(PixelBuffer b, _SeatDraw d) {
     final p = d.place;
     final palette = CharacterPalette.of(p.seat);
-    final hood = p.seat == Seat.claude;
     final atDesk = d.present && d.spot != Spot.coffee;
 
     final chair = p.visitorChair;
     if (chair != null) {
-      paintVisitorChair(px, chair, greyed: d.visual == SeatVisual.empty);
-      if (atDesk) {
-        drawCharacter(px, d.x, d.baseY, d.pose!, palette, hood: hood);
+      final greyed = d.visual == SeatVisual.empty;
+      paintVisitorChairBack(b, chair, palette, greyed: greyed);
+      if (atDesk) _drawCharacter(b, d);
+      paintVisitorChairFront(b, chair, greyed: greyed);
+      return;
+    }
+
+    final desk = p.desk!;
+    final m = p.monitor!;
+    final mode = screenFor(d.visual);
+    final glow = screenGlow(mode, frame);
+    if (glow != 0 && lighting.monitorHalo) {
+      // Screen light on the wall and the chair behind the monitor.
+      b.lightPool(
+        m.centerX,
+        m.centerY,
+        m.w ~/ 2 + 10,
+        m.h ~/ 2 + 8,
+        tint: glow,
+        strength: 0.22,
+      );
+    }
+    final deskReturn = p.deskReturn;
+    if (deskReturn != null) {
+      paintDeskReturn(b, deskReturn);
+      paintBooks(b, deskReturn.x + 6, deskReturn.y + 14);
+    }
+    if (p.plantX != null) paintDeskPlant(b, p.plantX!, p.plantY!);
+    final chairBack = p.chairBack;
+    if (chairBack != null) paintChairBack(b, chairBack, palette);
+    if (atDesk) _drawCharacter(b, d, clipBottom: desk.y);
+    paintDesk(b, desk, p.deskSurfaceHeight);
+
+    if (glow != 0 && lighting.monitorGlow > 0) {
+      b.lightPool(
+        m.centerX,
+        desk.y + 3,
+        m.w ~/ 2 + 4,
+        4,
+        tint: glow,
+        strength: lighting.monitorGlow,
+      );
+    }
+    if (p.lampX != null) {
+      paintDeskLamp(
+        b,
+        p.lampX!,
+        p.lampY!,
+        lighting,
+        lit: d.visual != SeatVisual.sleeping,
+      );
+    }
+    paintMonitor(b, m, mode, frame);
+    paintKeyboard(b, p.keyboardX!, p.keyboardY!);
+    paintMouse(b, p.keyboardX! + 25, p.keyboardY! - 1);
+    paintTray(b, p.trayX!, p.trayY!);
+    if (p.mugX != null) {
+      paintMug(b, p.mugX!, p.mugY!, stripe: palette.accent);
+      if (atDesk && d.spot == Spot.chair) {
+        paintMugSteam(b, p.mugX!, p.mugY!, frame);
       }
-    } else {
-      final desk = p.desk!;
-      final deskReturn = p.deskReturn;
-      if (deskReturn != null) paintDeskReturn(px, deskReturn);
-      if (p.plantX != null) paintPlant(px, p.plantX!, p.plantY!);
-      final chairBack = p.chairBack;
-      if (chairBack != null) paintChairBack(px, chairBack);
-      if (atDesk) {
-        px.canvas.save();
-        px.canvas.clipRect(
-          Rect.fromLTRB(0, 0, SceneLayout.width.toDouble(), desk.y.toDouble()),
-        );
-        drawCharacter(px, d.x, d.baseY, d.pose!, palette, hood: hood);
-        px.canvas.restore();
-      }
-      paintDesk(px, desk, p.deskSurfaceHeight);
-      final m = p.monitor!;
-      drawMonitor(px, m.x, m.y, m.w, m.h, screenFor(d.visual), frame);
-      paintKeyboard(px, p.keyboardX!, p.keyboardY!);
-      drawTray(px, p.trayX!, p.trayY!);
-      if (d.present && d.spot == Spot.chair && handsOnKeyboard(d.visual)) {
+    }
+    if (d.present && d.spot == Spot.chair && handsOnKeyboard(d.visual)) {
+      b.withTint(lighting.lit, () {
         drawHands(
-          px,
+          b,
           p.keyboardX!,
           p.keyboardY!,
           palette,
           animate: d.visual == SeatVisual.typing,
           frame: frame,
         );
-      }
-    }
-
-    if (d.present && d.spot == Spot.coffee) {
-      drawCharacter(px, d.x, d.baseY, d.pose!, palette, hood: hood);
+      });
     }
   }
 
-  void _paintObjects(Px px, _SeatDraw d) {
+  void _paintObjects(PixelBuffer b, _SeatDraw d) {
     if (!d.present) return;
     final x = d.x;
     final y = d.top;
     switch (d.visual) {
       case SeatVisual.thinking:
-        drawCloud(px, x + 10, y - 10, frame);
+        drawCloud(b, x + 14, y - 16, frame);
       case SeatVisual.typing:
-        if (d.snap.bubble == null) drawDots(px, x + 10, y - 11, frame);
+        if (d.snap.bubble == null) drawDots(b, x + 14, y - 16, frame);
       case SeatVisual.editing:
-        drawPen(px, x + 10, y - 8, frame);
+        drawPen(b, x + 16, y - 12, frame);
         final trayX = d.place.trayX;
         final trayY = d.place.trayY;
         if (trayX != null && trayY != null && d.spot == Spot.chair) {
-          drawFlyingSheet(px, x + 14, y + 6, trayX + 2, trayY - 5, frame);
+          drawFlyingSheet(b, x + 20, y + 8, trayX + 3, trayY - 8, frame);
         }
       case SeatVisual.celebrating:
-        drawCheck(px, x + 12, y - 9);
+        drawCheck(b, x + 18, y - 14);
       case SeatVisual.failed:
-        drawSweat(px, x - 1, y + 2, frame);
+        drawSweat(b, x - 2, y + 3, frame);
       case SeatVisual.sleeping:
-        drawZzz(px, x + 13, y - 9);
+        drawZzz(b, x + 19, y - 13);
       default:
         break;
     }
@@ -202,14 +351,14 @@ class OfficePainter extends CustomPainter {
   /// Height of the floating prop above the head, so a speech bubble can sit
   /// above it instead of over it.
   static int _propHeightAbove(SeatVisual visual) => switch (visual) {
-    SeatVisual.thinking => 11,
-    SeatVisual.editing => 9,
-    SeatVisual.celebrating => 10,
-    SeatVisual.sleeping => 10,
+    SeatVisual.thinking => 16,
+    SeatVisual.editing => 12,
+    SeatVisual.celebrating => 14,
+    SeatVisual.sleeping => 13,
     _ => 0,
   };
 
-  void _paintStickyNotes(Px px) {
+  void _paintStickyNotes(PixelBuffer b) {
     final notes = snapshot.tasks.reversed.take(SceneLayout.maxNotes).toList();
     for (var i = 0; i < notes.length; i++) {
       final task = notes[i];
@@ -221,22 +370,17 @@ class OfficePainter extends CustomPainter {
       final y =
           SceneLayout.noteOriginY +
           row * (SceneLayout.noteHeight + SceneLayout.noteGap);
-      px.roundBox(
+      final (fill, dark) = Palette.sticky(task.status);
+      paintStickyNote(
+        b,
         x,
         y,
         SceneLayout.noteWidth,
         SceneLayout.noteHeight,
-        ScenePalette.sticky(task.status),
+        fill,
+        dark,
+        pinned: task.isRoot,
       );
-      if (task.isRoot) {
-        px.fill(
-          x + SceneLayout.noteWidth ~/ 2 - 1,
-          y + 1,
-          2,
-          1,
-          ScenePalette.outline,
-        );
-      }
     }
   }
 
@@ -246,28 +390,30 @@ class OfficePainter extends CustomPainter {
       final p = d.place;
       labels.add(
         _Label(
-          text: _text(_seatName(p.seat), ScenePalette.cream),
-          box: IRect(p.plateCenterX - 13, p.plateCenterY - 4, 26, 8),
-          fill: ScenePalette.slate,
+          text: _text(_seatName(p.seat), const Color(Palette.cream)),
+          box: IRect(p.plateCenterX - 18, p.plateCenterY - 5, 36, 11),
+          fill: Palette.woodDark,
+          edge: Palette.woodOutline,
+          light: Palette.woodShade,
         ),
       );
       final bubble = d.snap.bubble;
       if (bubble == null || !d.present) continue;
-      final text = _text(
-        _ellipsis(bubble.text),
-        ScenePalette.bubbleText(bubble.kind),
-      );
-      final w = (text.width / scale).ceil() + 6;
-      const h = 10;
+      final text = _text(_ellipsis(bubble.text), Palette.bubbleText(bubble.kind));
+      final w = (text.width / scale).ceil() + 8;
+      const h = 13;
       final headX = d.x + spriteWidth ~/ 2;
       final bx = (headX - w ~/ 2).clamp(1, SceneLayout.width - 1 - w);
-      final by = d.top - 14 - _propHeightAbove(d.visual);
+      final by = d.top - 18 - _propHeightAbove(d.visual);
+      final fill = Palette.bubbleFill(bubble.kind);
       labels.add(
         _Label(
           text: text,
           box: IRect(bx, by, w, h),
-          fill: ScenePalette.bubbleFill(bubble.kind),
-          tailX: headX.clamp(bx + 2, bx + w - 3),
+          fill: fill,
+          edge: Palette.ink,
+          light: PixelBuffer.lightOf(fill),
+          tailX: headX.clamp(bx + 3, bx + w - 4),
         ),
       );
     }
@@ -280,7 +426,7 @@ class OfficePainter extends CustomPainter {
         text: s,
         style: TextStyle(
           color: color,
-          fontSize: 4.0 * scale,
+          fontSize: 6.0 * scale,
           height: 1.0,
           fontWeight: FontWeight.w600,
         ),
@@ -335,26 +481,40 @@ class _Label {
     required this.text,
     required this.box,
     required this.fill,
+    required this.edge,
+    required this.light,
     this.tailX,
   });
 
   final TextPainter text;
   final IRect box;
-  final Color fill;
+  final int fill;
+  final int edge;
+  final int light;
 
   /// Scene x of the bubble tail; null for a name plate.
   final int? tailX;
 
-  void paintBox(Px px) {
-    px.roundBox(box.x, box.y, box.w, box.h, fill);
-    final tx = tailX;
-    if (tx == null) return;
-    final bottom = box.bottom - 1;
-    px.fill(tx, bottom, 1, 1, fill);
-    px.fill(tx - 1, bottom + 1, 1, 1, ScenePalette.outline);
-    px.fill(tx, bottom + 1, 1, 1, fill);
-    px.fill(tx + 1, bottom + 1, 1, 1, ScenePalette.outline);
-    px.fill(tx, bottom + 2, 1, 1, ScenePalette.outline);
+  /// Name plates are wood in the room's light; speech bubbles are read as
+  /// text, so they keep their own colours whatever the hour.
+  void paintBox(PixelBuffer b, SceneLighting lighting) {
+    b.shadow(box.x + 1, box.y + 1, box.w, box.h, feather: 1);
+    b.withTint(tailX == null ? lighting.lit : null, () {
+      b.roundFill(box.x, box.y, box.w, box.h, fill);
+      b.roundRing(box.x, box.y, box.w, box.h, edge);
+      b.hline(box.x + 1, box.y + 1, box.w - 2, light);
+      final tx = tailX;
+      if (tx == null) return;
+      final bottom = box.bottom - 1;
+      b.hline(tx - 1, bottom, 3, fill);
+      b.set(tx - 2, bottom + 1, edge);
+      b.hline(tx - 1, bottom + 1, 2, fill);
+      b.set(tx + 1, bottom + 1, edge);
+      b.set(tx - 1, bottom + 2, edge);
+      b.set(tx, bottom + 2, fill);
+      b.set(tx + 1, bottom + 2, edge);
+      b.set(tx, bottom + 3, edge);
+    });
   }
 
   void paintText(Canvas canvas, Offset origin, int scale) {

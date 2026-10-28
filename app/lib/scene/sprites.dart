@@ -1,18 +1,15 @@
+import 'package:office_core/office_core.dart';
+
 import '../state/seat_state.dart';
 import 'palette.dart';
 import 'pixel.dart';
 
-/// Sprite box: 16 columns by 24 rows, plus [spriteEarRows] above for the hood
-/// ears. A standing character uses rows 0-22, a seated one rows 0-20.
-const int spriteWidth = 16;
-const int spriteHeight = 24;
-const int spriteEarRows = 2;
-
-/// Sprite row that rests on a desk surface when seated (waist at the edge).
-const int seatedDeskRow = 16;
-
-/// Sprite row that rests on a desk surface when standing behind it (hips).
-const int standingDeskRow = 20;
+/// Sprite box: 24 columns by 32 rows, plus [spriteEarRows] above for the
+/// beanie ears. A standing character uses rows 0-31, a seated one is clipped
+/// by the desk.
+const int spriteWidth = 24;
+const int spriteHeight = 32;
+const int spriteEarRows = 3;
 
 enum Stance { standing, seated }
 
@@ -23,13 +20,24 @@ enum Eyes { open, closed, up }
 /// Where a seat's character is drawn.
 enum Spot { chair, besideChair, coffee }
 
-/// One drawable pose; [dy] shifts the sprite (lean forward, bounce).
+/// Which outfit a character wears.
+enum CharacterStyle { beanie, glasses, sweater }
+
+CharacterStyle styleFor(Seat seat) => switch (seat) {
+  Seat.claude => CharacterStyle.beanie,
+  Seat.gpt => CharacterStyle.glasses,
+  Seat.gemini => CharacterStyle.sweater,
+};
+
+/// One drawable pose; [dy] shifts the whole sprite (bounce) and [headDy]
+/// drops the head one pixel (breathing, drooping).
 class CharacterPose {
   const CharacterPose({
     required this.stance,
     this.arms = Arms.down,
     this.eyes = Eyes.open,
     this.dy = 0,
+    this.headDy = 0,
     this.frame = 0,
   });
 
@@ -37,6 +45,7 @@ class CharacterPose {
   final Arms arms;
   final Eyes eyes;
   final int dy;
+  final int headDy;
 
   /// Animation frame 0-3; used by the mug steam.
   final int frame;
@@ -45,14 +54,19 @@ class CharacterPose {
 /// Pose for a seat visual, or null when nobody is at the seat.
 CharacterPose? poseFor(SeatVisual visual, int frame, {required bool hasDesk}) {
   final deskArms = hasDesk ? Arms.onDesk : Arms.down;
+  final breath = frame ~/ 2 == 1 ? 1 : 0;
   return switch (visual) {
     SeatVisual.empty => null,
-    SeatVisual.idle => const CharacterPose(stance: Stance.seated),
+    SeatVisual.idle => CharacterPose(stance: Stance.seated, headDy: breath),
     SeatVisual.sleeping => const CharacterPose(
       stance: Stance.seated,
       eyes: Eyes.closed,
+      headDy: 1,
     ),
-    SeatVisual.arriving => const CharacterPose(stance: Stance.standing),
+    SeatVisual.arriving => CharacterPose(
+      stance: Stance.standing,
+      headDy: breath,
+    ),
     SeatVisual.thinking => const CharacterPose(
       stance: Stance.seated,
       eyes: Eyes.up,
@@ -74,6 +88,7 @@ CharacterPose? poseFor(SeatVisual visual, int frame, {required bool hasDesk}) {
       stance: Stance.standing,
       arms: Arms.mug,
       frame: frame,
+      headDy: breath,
     ),
     SeatVisual.celebrating => CharacterPose(
       stance: Stance.seated,
@@ -83,6 +98,7 @@ CharacterPose? poseFor(SeatVisual visual, int frame, {required bool hasDesk}) {
     SeatVisual.failed => const CharacterPose(
       stance: Stance.seated,
       arms: Arms.scratch,
+      headDy: 1,
     ),
   };
 }
@@ -103,10 +119,15 @@ bool handsOnKeyboard(SeatVisual visual) => switch (visual) {
   _ => false,
 };
 
-/// Builds the ASCII rows of a character. Legend: o outline, h hair, s skin,
-/// b body, p pants, w paper, l paper line, c cream, d steam. Row 0 of the
-/// result is [spriteEarRows] rows above the 16x24 sprite box.
-List<String> buildCharacterRows(CharacterPose pose, {required bool hood}) {
+/// Builds the ASCII rows of a character. Row 0 of the result is
+/// [spriteEarRows] rows above the 24x32 sprite box.
+///
+/// Legend: O/H/h/d hair outline, light, base, dark; k/L/s/S skin outline,
+/// light, base, shade; q/B/b/D body outline, light, base, dark; Q/p/P pants
+/// outline, base, dark; x/X shoe, shoe light; e/E eye, eye glint; m mouth;
+/// g glasses; n ear inside; c/C mug, mug shade; z steam; W/V/l paper, paper
+/// shade, paper line.
+List<String> buildCharacterRows(CharacterPose pose, CharacterStyle style) {
   const w = spriteWidth;
   const h = spriteHeight + spriteEarRows;
   final g = List.generate(h, (_) => List.filled(w, '.'));
@@ -117,193 +138,297 @@ List<String> buildCharacterRows(CharacterPose pose, {required bool hood}) {
     g[row][c] = ch;
   }
 
-  void line(int r, int c0, int c1, String ch) {
-    for (var c = c0; c <= c1; c++) {
-      put(r, c, ch);
+  /// Writes a literal row; '.' leaves the pixel as it was.
+  void text(int r, int c0, String s) {
+    for (var i = 0; i < s.length; i++) {
+      if (s[i] != '.') put(r, c0 + i, s[i]);
     }
   }
 
-  final hair = hood ? 'b' : 'h';
-
-  // Head.
-  line(0, 4, 11, 'o');
-  for (var r = 1; r <= 2; r++) {
-    put(r, 3, 'o');
-    line(r, 4, 11, hair);
-    put(r, 12, 'o');
-  }
-  put(3, 3, 'o');
-  put(3, 4, hair);
-  line(3, 5, 10, 's');
-  put(3, 11, hair);
-  put(3, 12, 'o');
-  for (var r = 4; r <= 7; r++) {
-    put(r, 3, 'o');
-    line(r, 4, 11, 's');
-    put(r, 12, 'o');
-  }
-  line(8, 4, 11, 'o');
-  if (hood) {
-    put(-2, 4, 'o');
-    put(-2, 11, 'o');
-    put(-1, 3, 'o');
-    put(-1, 4, 'b');
-    put(-1, 5, 'o');
-    put(-1, 10, 'o');
-    put(-1, 11, 'b');
-    put(-1, 12, 'o');
-    put(0, 3, 'o');
-    put(0, 4, 'b');
-    put(0, 11, 'b');
-    put(0, 12, 'o');
+  /// Writes a literal row, '.' included (clears).
+  void raw(int r, int c0, String s) {
+    for (var i = 0; i < s.length; i++) {
+      put(r, c0 + i, s[i]);
+    }
   }
 
-  // Face.
+  final hd = pose.headDy;
+
+  // ---- head (columns 6..17) ----
+  const head = [
+    '..OOOOOOOO..', // 0
+    '.OHHHhhhhhO.', // 1
+    'OHHHhhhhhhhO', // 2
+    'OHHhhhhhhhhO', // 3
+    'OHhhhhhhhhhO', // 4
+    'OhdddsddddhO', // 5 fringe with a parting
+    'khLssssssShk', // 6
+    'kLssssssssSk', // 7
+    'kLssssssssSk', // 8
+    'ksssssssssSk', // 9
+    'kssssmmssSSk', // 10
+    '.kssssssSSk.', // 11
+    '..kkkkkkkk..', // 12
+  ];
+  for (var i = 0; i < head.length; i++) {
+    text(i + hd, 6, head[i]);
+  }
+
+  switch (style) {
+    case CharacterStyle.beanie:
+      // Beanie in the hoodie colour with a ribbed brim and cat ears.
+      const beanie = [
+        '.qbbbbbbbbq.',
+        'qBBBbbbbbbbq',
+        'qBBBbbbbbbbq',
+        'qBBbbbbbbbbq',
+        'qDbDbDbDbDbq',
+        'qDDDDDDDDDDq',
+      ];
+      for (var i = 0; i < beanie.length; i++) {
+        raw(i + hd, 6, beanie[i]);
+      }
+      text(6 + hd, 6, 'qb........bq');
+      text(-3 + hd, 6, '..q......q..');
+      text(-2 + hd, 6, '.qnq....qnq.');
+      text(-1 + hd, 6, 'qbnnq..qnnbq');
+    case CharacterStyle.glasses:
+      text(6 + hd, 8, 'gggg');
+      text(6 + hd, 12, 'gggg');
+      for (final c in [8, 11, 12, 15]) {
+        put(7 + hd, c, 'g');
+        put(8 + hd, c, 'g');
+      }
+      text(9 + hd, 8, 'gggg');
+      text(9 + hd, 12, 'gggg');
+      put(7 + hd, 7, 'g');
+      put(7 + hd, 16, 'g');
+    case CharacterStyle.sweater:
+      for (var r = 6; r <= 9; r++) {
+        put(r + hd, 7, 'h');
+        put(r + hd, 16, 'h');
+      }
+      put(10 + hd, 7, 'd');
+      put(10 + hd, 16, 'd');
+      put(5 + hd, 11, 'd');
+      put(5 + hd, 13, 's');
+  }
+
+  // Eyes.
   switch (pose.eyes) {
     case Eyes.open:
-      put(5, 5, 'o');
-      put(5, 10, 'o');
-    case Eyes.up:
-      put(4, 5, 'o');
-      put(4, 10, 'o');
+      text(7 + hd, 9, 'Ee');
+      text(7 + hd, 13, 'Ee');
+      text(8 + hd, 9, 'ee');
+      text(8 + hd, 13, 'ee');
     case Eyes.closed:
-      line(5, 4, 5, 'o');
-      line(5, 10, 11, 'o');
+      text(8 + hd, 9, 'ee');
+      text(8 + hd, 13, 'ee');
+    case Eyes.up:
+      text(6 + hd, 9, 'Ee');
+      text(6 + hd, 13, 'Ee');
+      text(7 + hd, 9, 'ee');
+      text(7 + hd, 13, 'ee');
   }
-  line(7, 7, 8, 'o');
 
-  // Torso with arms down.
-  put(9, 3, 'o');
-  line(9, 4, 11, 'b');
-  put(9, 12, 'o');
-  for (var r = 10; r <= 13; r++) {
-    put(r, 2, 'o');
-    line(r, 3, 12, 'b');
-    put(r, 13, 'o');
+  // ---- torso (columns 4..19) ----
+  const torso = [
+    '.qqqqkSSSSkqqqq.', // 13 shoulders and neck
+    'qBBbbbSSSSbbDDDq', // 14
+    'qBBbbbbbbbbbDDDq', // 15
+    'qBBbbbbbbbbbDDDq', // 16
+    'qBBbbbbbbbbbDDDq', // 17
+    'qBBbbbbbbbbbDDDq', // 18
+    'qBBbbbbbbbbbDDDq', // 19
+    'qDDbbbbbbbbbDDDq', // 20 cuffs
+    'kLsqbbbbbbbbqsSk', // 21 hands
+    'kssqbbbbbbbbqSSk', // 22
+    'kkkqqqqqqqqqqkkk', // 23
+  ];
+  for (var i = 0; i < torso.length; i++) {
+    text(13 + i, 4, torso[i]);
   }
-  for (var r = 14; r <= 15; r++) {
-    put(r, 2, 'o');
-    put(r, 3, 's');
-    line(r, 4, 11, 'b');
-    put(r, 12, 's');
-    put(r, 13, 'o');
+  switch (style) {
+    case CharacterStyle.beanie:
+      // Kangaroo pocket and drawstrings.
+      text(19, 8, 'DDDDDDDD');
+      put(15, 11, 'c');
+      put(16, 11, 'c');
+      put(17, 11, 'c');
+      put(15, 12, 'c');
+      put(16, 12, 'c');
+    case CharacterStyle.glasses:
+      // Shirt collar and a button placket.
+      text(14, 8, 'cc....cc');
+      put(15, 9, 'c');
+      put(15, 14, 'c');
+      put(17, 12, 'D');
+      put(19, 12, 'D');
+    case CharacterStyle.sweater:
+      // Ribbed collar and a light chest stripe.
+      text(14, 9, 'cccccc');
+      text(17, 7, 'BBBBBBBBB');
   }
-  line(16, 2, 3, 'o');
-  line(16, 4, 11, 'b');
-  line(16, 12, 13, 'o');
-  line(17, 3, 12, 'o');
 
-  // Legs.
-  final legRows = pose.stance == Stance.standing ? 4 : 2;
-  for (var r = 18; r < 18 + legRows; r++) {
-    put(r, 4, 'o');
-    line(r, 5, 6, 'p');
-    line(r, 7, 8, 'o');
-    line(r, 9, 10, 'p');
-    put(r, 11, 'o');
-  }
-  line(18 + legRows, 4, 11, 'o');
-
-  // Arm variants.
-  void rightArmUp(int handTop) {
-    put(handTop - 1, 12, 'o');
-    line(handTop - 1, 13, 14, 'o');
-    for (var r = handTop; r <= handTop + 1; r++) {
-      line(r, 13, 14, 's');
-      put(r, 15, 'o');
+  // ---- legs ----
+  if (pose.stance == Stance.standing) {
+    for (var r = 24; r <= 29; r++) {
+      text(r, 7, 'QppPQQppPQ');
     }
-    for (var r = handTop + 2; r <= 10; r++) {
-      line(r, 13, 14, 'b');
-      put(r, 15, 'o');
+  } else {
+    text(24, 5, 'QpppppppppppPPQ');
+    text(25, 5, 'QpppppppppppPPQ');
+    text(26, 5, 'QPPPPPPPPPPPPPQ');
+    text(27, 5, 'QQQQQQQQQQQQQQQ');
+    text(28, 7, 'QppPQQppPQ');
+    text(29, 7, 'QppPQQppPQ');
+  }
+  text(30, 6, 'QXxxxQQXxxxQ');
+  text(31, 6, 'QQQQQQQQQQQQ');
+
+  // ---- arms ----
+  void dropRightArm() {
+    for (var r = 14; r <= 22; r++) {
+      raw(r, 16, 'Dq..');
     }
-    line(11, 13, 15, 'o');
+    raw(23, 16, 'qq..');
+  }
+
+  void dropLeftArm() {
+    for (var r = 14; r <= 22; r++) {
+      raw(r, 4, '..qB');
+    }
+    raw(23, 4, '..qq');
+  }
+
+  void rightArmUp(int handTop, int armCol) {
+    for (var r = handTop + 4; r <= 15; r++) {
+      text(r, armCol, 'qbDq');
+    }
+    text(handTop, armCol - 1, '.kkk.');
+    text(handTop + 1, armCol - 1, 'kLssk');
+    text(handTop + 2, armCol - 1, 'ksSSk');
+    text(handTop + 3, armCol - 1, '.kkk.');
   }
 
   void leftArmUp(int handTop) {
-    line(handTop - 1, 1, 2, 'o');
-    put(handTop - 1, 3, 'o');
-    for (var r = handTop; r <= handTop + 1; r++) {
-      line(r, 1, 2, 's');
-      put(r, 0, 'o');
+    for (var r = handTop + 4; r <= 15; r++) {
+      text(r, 2, 'qBbq');
     }
-    for (var r = handTop + 2; r <= 10; r++) {
-      line(r, 1, 2, 'b');
-      put(r, 0, 'o');
-    }
-    line(11, 0, 2, 'o');
+    text(handTop, 1, '.kkk.');
+    text(handTop + 1, 1, 'kLssk');
+    text(handTop + 2, 1, 'ksSSk');
+    text(handTop + 3, 1, '.kkk.');
+  }
+
+  void sleeves() {
+    raw(21, 4, 'qBb');
+    raw(22, 4, 'qBb');
+    raw(23, 4, 'qqq');
+    raw(21, 17, 'DDq');
+    raw(22, 17, 'DDq');
+    raw(23, 17, 'qqq');
   }
 
   switch (pose.arms) {
     case Arms.down:
       break;
     case Arms.onDesk:
-      for (var r = 14; r <= 15; r++) {
-        put(r, 3, 'b');
-        put(r, 12, 'b');
-      }
+      sleeves();
     case Arms.raisedRight:
-      rightArmUp(1);
+      dropRightArm();
+      rightArmUp(3, 18);
     case Arms.scratch:
-      rightArmUp(5);
+      dropRightArm();
+      rightArmUp(5 + hd, 18);
     case Arms.armsUp:
-      rightArmUp(1);
-      leftArmUp(1);
+      dropRightArm();
+      dropLeftArm();
+      rightArmUp(3, 18);
+      leftArmUp(3);
     case Arms.paper:
-      line(9, 5, 10, 'o');
-      for (var r = 10; r <= 13; r++) {
-        put(r, 4, 'o');
-        line(r, 5, 10, 'w');
-        put(r, 11, 'o');
+      sleeves();
+      text(14, 8, 'VVVVVVVV');
+      for (var r = 15; r <= 20; r++) {
+        text(r, 8, 'WWWWWWWV');
       }
-      line(14, 5, 10, 'o');
-      line(11, 6, 9, 'l');
-      line(13, 6, 9, 'l');
-      for (var r = 12; r <= 13; r++) {
-        put(r, 3, 's');
-        put(r, 12, 's');
-      }
+      text(21, 8, 'VVVVVVVV');
+      text(16, 9, 'llll');
+      text(18, 9, 'lllll');
+      text(20, 9, 'lll');
+      raw(18, 5, 'kLs');
+      raw(19, 5, 'kss');
+      raw(18, 16, 'sSk');
+      raw(19, 16, 'sSk');
     case Arms.mug:
-      line(12, 13, 15, 'o');
-      for (var r = 13; r <= 14; r++) {
-        put(r, 13, 'o');
-        put(r, 14, 'c');
-        put(r, 15, 'o');
-      }
-      line(15, 13, 15, 'o');
-      put(pose.frame ~/ 2 == 0 ? 10 : 9, 14, 'd');
+      raw(21, 17, 'DDq');
+      raw(22, 17, 'DDq');
+      raw(23, 17, 'qqq');
+      raw(18, 16, 'kLs');
+      raw(19, 16, 'kss');
+      raw(20, 16, '.kk');
+      text(16, 19, 'CCCC');
+      text(17, 19, 'cccCC');
+      text(18, 19, 'cccC.');
+      text(19, 19, 'cccCC');
+      text(20, 19, 'CCCC');
+      final up = pose.frame ~/ 2 == 0;
+      put(up ? 14 : 13, 20, 'z');
+      put(up ? 13 : 14, 22, 'z');
   }
 
   return [for (final row in g) row.join()];
 }
 
-/// Draws a character whose 16x24 sprite box starts at (x, y). The hood ears
-/// extend [spriteEarRows] above y.
+/// Draws a character whose 24x32 sprite box starts at (x, y). The ears
+/// extend [spriteEarRows] above y. Rows at or below [clipBottom] are not
+/// drawn (character behind a desk).
 void drawCharacter(
-  Px px,
+  PixelBuffer b,
   int x,
   int y,
   CharacterPose pose,
-  CharacterPalette palette, {
-  required bool hood,
+  CharacterPalette palette,
+  CharacterStyle style, {
+  int clipBottom = 1 << 20,
 }) {
-  final rows = buildCharacterRows(pose, hood: hood);
-  px.sprite(x, y + pose.dy - spriteEarRows, rows, {
-    'o': ScenePalette.outline,
+  final rows = buildCharacterRows(pose, style);
+  b.sprite(x, y + pose.dy - spriteEarRows, rows, {
+    'O': palette.hairOutline,
+    'H': palette.hairLight,
     'h': palette.hair,
-    's': palette.skin,
+    'd': palette.hairDark,
+    'k': CharacterPalette.skinOutline,
+    'L': CharacterPalette.skinLight,
+    's': CharacterPalette.skin,
+    'S': CharacterPalette.skinShade,
+    'q': palette.bodyOutline,
+    'B': palette.bodyLight,
     'b': palette.body,
-    'p': palette.pants,
-    'w': ScenePalette.paper,
-    'l': ScenePalette.paperLine,
-    'c': ScenePalette.cream,
-    'd': ScenePalette.grey,
-  });
+    'D': palette.bodyDark,
+    'Q': CharacterPalette.pantsOutline,
+    'p': CharacterPalette.pants,
+    'P': CharacterPalette.pantsDark,
+    'x': CharacterPalette.shoe,
+    'X': CharacterPalette.shoeLight,
+    'e': Palette.ink,
+    'E': Palette.creamLight,
+    'm': CharacterPalette.skinOutline,
+    'g': Palette.steelShade,
+    'n': Palette.pink,
+    'c': Palette.cream,
+    'C': Palette.creamDark,
+    'z': Palette.steam,
+    'W': Palette.paper,
+    'V': Palette.paperShade,
+    'l': Palette.paperLine,
+  }, clipBottom: clipBottom);
 }
 
-/// Two hands over a 14-wide keyboard whose top-left is (kbX, kbY). With
+/// Two hands over a 22-wide keyboard whose top-left is (kbX, kbY). With
 /// [animate] the hands alternate lifting one pixel every two frames.
 void drawHands(
-  Px px,
+  PixelBuffer b,
   int kbX,
   int kbY,
   CharacterPalette palette, {
@@ -313,6 +438,13 @@ void drawHands(
   final phase = animate ? frame ~/ 2 : -1;
   final leftLift = phase == 0 ? 1 : 0;
   final rightLift = phase == 1 ? 1 : 0;
-  px.box(kbX + 1, kbY - 2 - leftLift, 4, 4, palette.skin);
-  px.box(kbX + 9, kbY - 2 - rightLift, 4, 4, palette.skin);
+  const hand = ['.kkkk.', 'kLsssk', 'kssSSk', '.kkkk.'];
+  const legend = {
+    'k': CharacterPalette.skinOutline,
+    'L': CharacterPalette.skinLight,
+    's': CharacterPalette.skin,
+    'S': CharacterPalette.skinShade,
+  };
+  b.sprite(kbX + 2, kbY - 3 - leftLift, hand, legend);
+  b.sprite(kbX + 14, kbY - 3 - rightLift, hand, legend);
 }

@@ -22,3 +22,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # VT323 (SIL OFL 1.1, licence in assets/fonts/OFL.txt): the pixel face of
+  # popup titles, tabs and buttons. Body text stays Roboto.
+  fonts:
+    - family: PixelFont
+      fonts:
+        - asset: assets/fonts/VT323-Regular.ttf

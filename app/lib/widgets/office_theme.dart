@@ -3,8 +3,9 @@ import 'package:office_core/office_core.dart';
 
 import '../state/seat_state.dart';
 
-/// Flat colours of the chrome around the scene. Solid fills only, the navy
-/// [OfficeColors.outline] is the one border colour, no translucent tints.
+/// Flat colours of the chrome around the scene (letterbox, status bar).
+/// Solid fills only, the navy [OfficeColors.outline] is the one border
+/// colour, no translucent tints.
 abstract final class OfficeColors {
   static const Color outline = Color(0xFF2C2F7A);
   static const Color background = Color(0xFF0F1124);
@@ -21,7 +22,7 @@ abstract final class OfficeColors {
   static const Color orange = Color(0xFFF0A24A);
   static const Color red = Color(0xFFE05A5A);
   static const Color water = Color(0xFF66CFEA);
-  static const Color grey = Color(0xFF7F8CB5);
+  static const Color grey = Color(0xFFB8BCD0);
 
   /// Tag colour of a desk, used on chips and log rows.
   static Color seat(Seat seat) => switch (seat) {
@@ -43,10 +44,15 @@ abstract final class OfficeColors {
     TaskStatus.failed => red,
   };
 
+  /// Text colour that reads on a [status] sticky: ink on the light notes,
+  /// cream on the red one.
+  static Color onStatus(TaskStatus status) =>
+      status == TaskStatus.failed ? text : ink;
+
   /// Dot colour next to a desk's state label.
   static Color visual(SeatVisual visual) => switch (visual) {
     SeatVisual.empty || SeatVisual.sleeping => grey,
-    SeatVisual.idle => textMuted,
+    SeatVisual.idle => PixelColors.inkFaint,
     SeatVisual.waitingUser || SeatVisual.onBreak => orange,
     SeatVisual.celebrating => green,
     SeatVisual.failed => red,
@@ -54,10 +60,63 @@ abstract final class OfficeColors {
   };
 }
 
+/// Paper, ink and metal tones of the pixel popups ([PixelFrame] and
+/// friends). Every popup is a solid parchment sheet with navy ink; the
+/// subtle checker uses two parchment tones, nothing is translucent.
+abstract final class PixelColors {
+  /// Parchment face of a frame.
+  static const Color paper = Color(0xFFF3E9CF);
+
+  /// Second checker tone, a touch darker than [paper].
+  static const Color paperChecker = Color(0xFFEDE2C5);
+
+  /// Highlight bevel (top and left) and the fill of sunken fields.
+  static const Color paperLight = Color(0xFFFBF5E6);
+
+  /// Shade bevel (bottom and right), ruled lines, pressed buttons.
+  static const Color paperEdge = Color(0xFFD6C59B);
+
+  /// Whiter paper of the mailbox letter.
+  static const Color letter = Color(0xFFFBF7EA);
+
+  /// Second checker tone of [letter].
+  static const Color letterChecker = Color(0xFFF4EFE0);
+
+  static const Color ink = OfficeColors.outline;
+  static const Color inkMuted = Color(0xFF5B5F93);
+  static const Color inkFaint = Color(0xFF8B8FBB);
+
+  /// Solid 2 px drop shadow under frames and buttons.
+  static const Color shadow = Color(0xFF14163A);
+
+  /// Title tab and primary buttons.
+  static const Color tab = OfficeColors.accent;
+
+  /// Whiteboard face, frame band and marker tray.
+  static const Color board = Color(0xFFF9F9F4);
+  static const Color boardFrame = Color(0xFFC3C9E0);
+  static const Color boardTray = Color(0xFF7F8CB5);
+
+  /// Clipboard wood and its metal clip.
+  static const Color clipboard = Color(0xFFC9A77A);
+  static const Color clip = Color(0xFF8E9AC2);
+  static const Color clipDark = Color(0xFF3D4470);
+
+  /// Stamp on the letter and the spiral holes of the notepad.
+  static const Color stamp = Color(0xFF66CFEA);
+  static const Color hole = Color(0xFF3D4470);
+
+  /// Disabled button face.
+  static const Color disabled = Color(0xFFE2DAC3);
+}
+
 /// Font families of the window. Material text uses the theme's family;
 /// identifiers and clocks ask for `monospace` with a stack that resolves on
 /// Windows (Consolas, Cascadia Mono), macOS (Menlo) and Linux (DejaVu).
 abstract final class OfficeFonts {
+  /// The pixel face (VT323, assets/fonts) for titles, tabs and buttons.
+  static const String pixel = 'PixelFont';
+
   static const List<String> monoFallback = [
     'Consolas',
     'Cascadia Mono',
@@ -67,8 +126,63 @@ abstract final class OfficeFonts {
   ];
 }
 
-/// The dark, cosy theme of the window. Primary buttons are opaque accent
-/// fills with ink text; cards are solid raised surfaces with a navy border.
+/// Text styles used on paper. Titles and labels are pixel, body is Roboto.
+abstract final class PixelText {
+  /// Frame tab titles.
+  static const TextStyle title = TextStyle(
+    fontFamily: OfficeFonts.pixel,
+    fontSize: 20,
+    height: 1,
+    color: PixelColors.ink,
+  );
+
+  /// Section headings and button labels.
+  static const TextStyle label = TextStyle(
+    fontFamily: OfficeFonts.pixel,
+    fontSize: 18,
+    height: 1,
+    color: PixelColors.ink,
+  );
+
+  /// Body text on paper.
+  static const TextStyle body = TextStyle(
+    fontSize: 13,
+    height: 1.35,
+    color: PixelColors.ink,
+  );
+
+  static const TextStyle bodyStrong = TextStyle(
+    fontSize: 13,
+    height: 1.35,
+    fontWeight: FontWeight.w700,
+    color: PixelColors.ink,
+  );
+
+  static const TextStyle muted = TextStyle(
+    fontSize: 12,
+    height: 1.3,
+    color: PixelColors.inkMuted,
+  );
+
+  static const TextStyle faint = TextStyle(
+    fontSize: 11,
+    height: 1.3,
+    color: PixelColors.inkFaint,
+  );
+
+  /// Clocks and session references.
+  static const TextStyle mono = TextStyle(
+    fontFamily: 'monospace',
+    fontFamilyFallback: OfficeFonts.monoFallback,
+    fontSize: 11,
+    height: 1.3,
+    color: PixelColors.inkMuted,
+  );
+}
+
+/// The dark, cosy theme of the window. The chrome (letterbox and status
+/// bar) is navy; everything the user opens is a pixel paper frame, so the
+/// Material defaults here only matter for text fields and the odd snackbar.
 ThemeData officeTheme() {
   const scheme = ColorScheme(
     brightness: Brightness.dark,
@@ -92,73 +206,32 @@ ThemeData officeTheme() {
     dividerColor: OfficeColors.outline,
     splashFactory: NoSplash.splashFactory,
   );
-  const border = OutlineInputBorder(
-    borderRadius: BorderRadius.all(Radius.circular(10)),
-    borderSide: BorderSide(color: OfficeColors.outline, width: 1.5),
-  );
   return base.copyWith(
     textTheme: base.textTheme.apply(
       bodyColor: OfficeColors.text,
       displayColor: OfficeColors.text,
     ),
-    inputDecorationTheme: const InputDecorationTheme(
-      filled: true,
-      fillColor: OfficeColors.surfaceSunken,
-      border: border,
-      enabledBorder: border,
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(10)),
-        borderSide: BorderSide(color: OfficeColors.accent, width: 1.5),
-      ),
-      hintStyle: TextStyle(color: OfficeColors.textFaint),
-      labelStyle: TextStyle(color: OfficeColors.textMuted),
-      isDense: true,
-      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        backgroundColor: OfficeColors.accent,
-        foregroundColor: OfficeColors.ink,
-        disabledBackgroundColor: OfficeColors.surfaceRaised,
-        disabledForegroundColor: OfficeColors.textFaint,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(10)),
-        ),
-      ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: OfficeColors.text,
-        side: const BorderSide(color: OfficeColors.outline, width: 1.5),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(10)),
-        ),
-      ),
-    ),
-    dialogTheme: const DialogThemeData(
-      backgroundColor: OfficeColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(14)),
-        side: BorderSide(color: OfficeColors.outline, width: 2),
-      ),
-    ),
-    bottomSheetTheme: const BottomSheetThemeData(
-      backgroundColor: OfficeColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
-        side: BorderSide(color: OfficeColors.outline, width: 2),
-      ),
+    textSelectionTheme: const TextSelectionThemeData(
+      cursorColor: PixelColors.ink,
+      selectionColor: PixelColors.paperEdge,
+      selectionHandleColor: PixelColors.ink,
     ),
     snackBarTheme: const SnackBarThemeData(
-      backgroundColor: OfficeColors.surfaceRaised,
-      contentTextStyle: TextStyle(color: OfficeColors.text),
+      backgroundColor: PixelColors.paper,
+      contentTextStyle: TextStyle(color: PixelColors.ink, fontSize: 13),
       behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: OfficeColors.outline, width: 2),
+      ),
     ),
-    chipTheme: const ChipThemeData(
-      side: BorderSide(color: OfficeColors.outline, width: 1.5),
-      backgroundColor: OfficeColors.surfaceRaised,
-      labelStyle: TextStyle(color: OfficeColors.text, fontSize: 12),
-      padding: EdgeInsets.symmetric(horizontal: 6),
+    tooltipTheme: const TooltipThemeData(
+      decoration: BoxDecoration(
+        color: PixelColors.paper,
+        border: Border.fromBorderSide(
+          BorderSide(color: OfficeColors.outline, width: 2),
+        ),
+      ),
+      textStyle: TextStyle(color: PixelColors.ink, fontSize: 12),
     ),
   );
 }
