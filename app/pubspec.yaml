@@ -1,0 +1,24 @@
+name: agent_office_app
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  office_core:
+    path: ../packages/office_core
+  path: ^1.9.1
+  path_provider: ^2.1.6
+  sqlite3_flutter_libs: 0.5.41
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
