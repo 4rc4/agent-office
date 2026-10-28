@@ -1,0 +1,11 @@
+# Dart / Flutter build state
+.dart_tool/
+build/
+
+# Local SQLite task boards (the office stores everything here)
+*.db
+*.db-wal
+*.db-shm
+
+# Raw output of the Phase 0 spike scripts
+spikes/out/

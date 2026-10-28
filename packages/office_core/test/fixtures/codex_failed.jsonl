@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"0199c8e2-aaaa-7b2c-9d4e-5f6a7b8c9d0e"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Starting with the failing widget test."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"flutter test test/settings/dark_mode_toggle_test.dart","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"turn.failed","error":{"message":"stream disconnected before completion: transport error"}}
