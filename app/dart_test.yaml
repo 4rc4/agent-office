@@ -1,0 +1,6 @@
+# Test tags of the app. CI runs `flutter test --exclude-tags=golden`; the
+# pixel goldens depend on the test shell's font rendering, so they are
+# regenerated locally with `flutter test --update-goldens <file>`.
+tags:
+  golden:
+    description: Pixel golden tests (scene and whole window).
