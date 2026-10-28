@@ -6,6 +6,7 @@ import '../board/task_board.dart';
 import '../model/agent_event.dart';
 import '../model/task.dart';
 import 'office_wiring.dart';
+import 'sqlite_windows.dart';
 
 /// Usage text of the `office_core` command.
 const String cliUsage = '''
@@ -205,6 +206,8 @@ Future<int> runOffice(
   TaskBoard? board,
 }) async {
   final config = invocation.config;
+  final sqliteDll = configureSqliteLibrary();
+  if (sqliteDll != null) out.writeln('office: sqlite3 from $sqliteDll');
   final office = await buildOffice(config, board: board);
   out
     ..writeln('office: cwd ${config.paths.cwd}')
