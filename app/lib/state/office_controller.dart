@@ -395,7 +395,37 @@ class OfficeController extends OfficeModel {
       sessionRef: event.sessionRef,
     );
     if (next == SeatVisual.celebrating) _scheduleIdle(seat);
+    if (event.kind == AgentEventKind.rateLimit) _recordUsage(event);
     _markDirty();
+  }
+
+  /// Stores a `rate_limit_event`'s window, utilization and reset time on
+  /// the board (one row per seat and window).
+  void _recordUsage(AgentEvent event) {
+    final info = event.raw['rate_limit_info'];
+    if (info is! Map || _stopped) return;
+    final utilization = info['utilization'];
+    final resets = info['resetsAt'];
+    final window = info['rateLimitType'];
+    try {
+      board.recordUsage(
+        UsageSnapshot(
+          seat: event.seat,
+          window: window is String && window.isNotEmpty ? window : 'unknown',
+          usedPct: utilization is num ? utilization * 100 : 0,
+          resetsAt: resets is num
+              ? DateTime.fromMillisecondsSinceEpoch(
+                  (resets * 1000).round(),
+                  isUtc: true,
+                )
+              : null,
+          source: 'claude-cli',
+          fetchedAt: _clock(),
+        ),
+      );
+    } on StateError {
+      // The board was closed under us.
+    }
   }
 
   void _onTaskChanged(TaskRecord task) {
@@ -536,6 +566,7 @@ class OfficeController extends OfficeModel {
       unreadReports: _unreadReports,
       paused: _paused,
       statusLine: _statusLine(open, seats),
+      usage: [for (final seat in Seat.values) ...board.usageFor(seat)],
     );
   }
 

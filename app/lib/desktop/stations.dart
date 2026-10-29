@@ -1,9 +1,9 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:office_core/office_core.dart';
 
-import '../scene/furniture.dart'
-    show paintCoffeeMachine, paintKeyboard, paintStickyNote;
+import '../scene/furniture.dart' show paintKeyboard, paintStickyNote;
 import '../scene/palette.dart';
 import '../scene/pixel.dart';
 import '../scene/irect.dart';
@@ -16,7 +16,7 @@ enum StationKind {
   whiteboard,
   deskClaude,
   deskGpt,
-  coffee,
+  tv,
   mailbox;
 
   /// The seat whose desk this is; null for the shared props.
@@ -59,9 +59,12 @@ class StationLayout {
     StationKind.whiteboard: 0.10,
     StationKind.deskClaude: 0.26,
     StationKind.deskGpt: 0.66,
-    StationKind.coffee: 0.78,
+    StationKind.tv: 0.78,
     StationKind.mailbox: 0.92,
   };
+
+  /// Smallest distance between two props' edges while dragging.
+  static const double dragGap = 16;
 
   /// Where a character waits for the user (no prop there).
   static const double userSpotFraction = 0.5;
@@ -80,7 +83,7 @@ class StationLayout {
   static (int, int) spriteSize(StationKind kind) => switch (kind) {
     StationKind.whiteboard => (32, 28),
     StationKind.deskClaude || StationKind.deskGpt => (36, 30),
-    StationKind.coffee => (20, 28),
+    StationKind.tv => (28, 26),
     StationKind.mailbox => (14, 24),
   };
 
@@ -106,12 +109,36 @@ class StationLayout {
     return switch (kind) {
       StationKind.deskClaude || StationKind.deskGpt => cx + 7 * s,
       StationKind.whiteboard => cx + (slot == 0 ? 21 * s : -21 * s),
-      StationKind.coffee => cx + (slot == 0 ? -17 * s : 17 * s),
+      StationKind.tv => cx + (slot == 0 ? -19 * s : 19 * s),
       StationKind.mailbox => cx + (slot == 0 ? -13 * s : 13 * s),
     };
   }
 
   double get userSpotX => width * userSpotFraction;
+
+  /// Moves [kind] towards [fraction] without crossing its neighbours in
+  /// the current left-to-right order: the prop stops [dragGap] pixels
+  /// before the next one and after the previous one, and never leaves the
+  /// screen. Returns the fraction applied.
+  double dragTo(StationKind kind, double fraction) {
+    final order = [...StationKind.values]
+      ..sort((a, b) => centerX(a).compareTo(centerX(b)));
+    final index = order.indexOf(kind);
+    final (w, _) = spriteSize(kind);
+    final half = w * scale / 2;
+    var low = minFraction * width;
+    var high = maxFraction * width;
+    if (index > 0) {
+      low = math.max(low, rect(order[index - 1]).right + dragGap + half);
+    }
+    if (index < order.length - 1) {
+      high = math.min(high, rect(order[index + 1]).left - dragGap - half);
+    }
+    final x = (fraction * width).clamp(math.min(low, high), high);
+    final applied = x / width;
+    fractions[kind] = applied;
+    return applied;
+  }
 
   /// Whether a feet centre at [x] would stand over a prop or its slots.
   bool overlapsStation(double x, {double margin = 96}) {
@@ -134,7 +161,7 @@ class StationState {
     this.screens = const {},
     this.notes = const [],
     this.flagUp = false,
-    this.brewing = false,
+    this.bars = const [],
   });
 
   /// Monitor content per desk owner.
@@ -146,8 +173,28 @@ class StationState {
   /// Unread report in the mailbox.
   final bool flagUp;
 
-  /// Someone is on a break: the machine steams.
-  final bool brewing;
+  /// What the TV shows: usage bars, at most three drawn.
+  final List<UsageBar> bars;
+}
+
+/// One bar on the TV: a seat's usage of one rate-limit window (0..1), or,
+/// [dim], the tokens of a seat whose CLI reports no limits.
+class UsageBar {
+  const UsageBar({
+    required this.seat,
+    required this.window,
+    required this.pct,
+    this.resetsAt,
+    this.dim = false,
+    this.tokens = 0,
+  });
+
+  final Seat seat;
+  final String window;
+  final double pct;
+  final DateTime? resetsAt;
+  final bool dim;
+  final int tokens;
 }
 
 /// Shadow on the floor under a prop or a character: two dithered ink rows
@@ -186,8 +233,8 @@ void paintStation(
       );
     case StationKind.whiteboard:
       _paintWhiteboard(b, cx, floor, state.notes);
-    case StationKind.coffee:
-      _paintCoffee(b, cx, floor, state.brewing ? frame : 0);
+    case StationKind.tv:
+      _paintTv(b, cx, floor, state.bars, frame);
     case StationKind.mailbox:
       _paintMailbox(b, cx, floor, flagUp: state.flagUp);
   }
@@ -279,20 +326,74 @@ void _paintWhiteboard(
   b.fill(x + 15, top + 19, 5, 1, Palette.teal);
 }
 
-/// Coffee corner: a short wooden counter with the room's machine on it.
-void _paintCoffee(PixelBuffer b, int cx, int floor, int frame) {
+/// TV corner: a low cabinet with a wide flat screen on it. The screen
+/// shows up to three usage bars (label block in the seat's colour, a track
+/// and a fill that goes green, amber, red); a blinking LED sits under it.
+void _paintTv(
+  PixelBuffer b,
+  int cx,
+  int floor,
+  List<UsageBar> bars,
+  int frame,
+) {
   final x = cx - 10;
   b.shadeRect(
     x,
-    floor - 6,
+    floor - 5,
     20,
-    6,
+    5,
     base: Palette.woodBase,
     light: Palette.woodLight,
     dark: Palette.woodDark,
   );
   b.hline(x, floor - 1, 20, Palette.woodOutline);
-  paintCoffeeMachine(b, IRect(cx - 7, floor - 28, 14, 22), frame);
+  b.hline(x + 3, floor - 3, 5, Palette.amber);
+  final body = IRect(cx - 12, floor - 25, 24, 20);
+  b.shadeRect(
+    body.x,
+    body.y,
+    body.w,
+    body.h,
+    base: Palette.slateBase,
+    light: Palette.slateLight,
+    dark: Palette.slateDark,
+    rounded: true,
+  );
+  b.roundRing(body.x, body.y, body.w, body.h, Palette.slateDark);
+  b.fill(cx - 2, floor - 5, 4, 1, Palette.slateShade);
+  final sx = body.x + 2;
+  final sy = body.y + 2;
+  const sw = 20;
+  const sh = 14;
+  b.emissive(() {
+    b.fill(sx, sy, sw, sh, Palette.terminalBg);
+    if (bars.isEmpty) {
+      b.hline(sx + 3, sy + 5, 14, Palette.terminalDim);
+      b.hline(sx + 3, sy + 8, 10, Palette.terminalDim);
+    }
+    for (var i = 0; i < bars.length && i < 3; i++) {
+      final bar = bars[i];
+      final y = sy + 2 + i * 4;
+      final seatColor = bar.seat == Seat.gpt ? Palette.teal : Palette.orange;
+      b.fill(sx + 1, y, 2, 3, seatColor);
+      b.fill(sx + 4, y, 15, 3, Palette.slateShade);
+      final width = (bar.pct.clamp(0, 1) * 15).round();
+      final fill = bar.dim
+          ? Palette.greyNoteDark
+          : bar.pct < 0.7
+          ? Palette.green
+          : bar.pct < 0.9
+          ? Palette.yellow
+          : Palette.red;
+      if (width > 0) b.fill(sx + 4, y, width, 3, fill);
+    }
+    b.set(
+      body.right - 4,
+      body.bottom - 2,
+      frame.isEven ? Palette.amberLight : Palette.amberDark,
+    );
+  });
+  b.hline(sx + 1, sy, 6, PixelBuffer.lightOf(Palette.terminalBg));
 }
 
 /// Mailbox on a post; the flag stands up while a report is unread.

@@ -25,6 +25,7 @@ class WorldPainter extends CustomPainter {
     this.wallpaper,
     this.devicePixelRatio = 1,
     this.hovered,
+    this.lifted,
     this.windowed = false,
   });
 
@@ -47,6 +48,9 @@ class WorldPainter extends CustomPainter {
 
   /// Seat whose character bobs (pointer on it).
   final Seat? hovered;
+
+  /// Station being dragged: drawn one sprite row higher.
+  final StationKind? lifted;
   final bool windowed;
 
   @override
@@ -68,12 +72,20 @@ class WorldPainter extends CustomPainter {
     final floor = layout.floorY ~/ s;
     int col(double x) => (x / s).round();
 
+    int floorFor(StationKind kind) => kind == lifted ? floor - 1 : floor;
     for (final kind in const [
       StationKind.whiteboard,
-      StationKind.coffee,
+      StationKind.tv,
       StationKind.mailbox,
     ]) {
-      paintStation(b, kind, col(layout.centerX(kind)), floor, state, frame);
+      paintStation(
+        b,
+        kind,
+        col(layout.centerX(kind)),
+        floorFor(kind),
+        state,
+        frame,
+      );
     }
     final sorted = [...actors]..sort((a, c) => a.x.compareTo(c.x));
     for (final actor in sorted) {
@@ -84,7 +96,7 @@ class WorldPainter extends CustomPainter {
     }
     for (final kind in const [StationKind.deskClaude, StationKind.deskGpt]) {
       final cx = col(layout.centerX(kind));
-      paintStation(b, kind, cx, floor, state, frame);
+      paintStation(b, kind, cx, floorFor(kind), state, frame);
       final owner = kind.owner!;
       final actor = actors.where((a) => a.seat == owner).firstOrNull;
       if (actor != null &&

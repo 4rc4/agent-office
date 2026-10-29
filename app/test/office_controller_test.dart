@@ -597,6 +597,40 @@ void main() {
       expect(b[reading + 1]?.text, compactingBubbleText);
     });
 
+    test('rate limit events land on the board and the snapshot', () async {
+      final h = Harness({
+        Seat.gpt: ScriptedAdapter(Seat.gpt, [
+          [
+            ScriptedTurn.success('ok', [
+              ev(
+                Seat.gpt,
+                AgentEventKind.rateLimit,
+                summary: 'rate limit allowed',
+                raw: {
+                  'type': 'rate_limit_event',
+                  'rate_limit_info': {
+                    'status': 'allowed',
+                    'rateLimitType': 'five_hour',
+                    'utilization': 0.42,
+                    'resetsAt': 1793372400,
+                  },
+                },
+              ),
+            ]),
+          ],
+        ]),
+      });
+      await h.controller.submit('slow', directSeat: Seat.gpt);
+      await h.waitIdle();
+      final usage = h.controller.snapshot.usage;
+      expect(usage, hasLength(1));
+      expect(usage.single.seat, Seat.gpt);
+      expect(usage.single.window, 'five_hour');
+      expect(usage.single.usedPct, closeTo(42, 0.01));
+      expect(usage.single.resetsAt, DateTime.utc(2026, 10, 30, 15));
+      expect(h.board.usageFor(Seat.gpt), hasLength(1));
+    });
+
     test('planned run: planning, worker, merge, report', () async {
       Future<PlanOrError> onePlan(String text) async => PlanOrError.plan(
         ParsedPlan(

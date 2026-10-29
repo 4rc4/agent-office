@@ -6,6 +6,7 @@ import 'package:agent_office_app/desktop/info_bubbles.dart';
 import 'package:agent_office_app/desktop/prompt_bubble.dart';
 import 'package:agent_office_app/desktop/settings_bubble.dart';
 import 'package:agent_office_app/desktop/stations.dart';
+import 'package:agent_office_app/desktop/tv_bubble.dart';
 import 'package:agent_office_app/runtime/office_settings.dart';
 import 'package:agent_office_app/state/seat_state.dart';
 import 'package:flutter/gestures.dart';
@@ -180,18 +181,35 @@ void main() {
       );
       await tester.drag(
         find.byKey(DesktopStage.stationKey(StationKind.mailbox)),
-        const Offset(-200, 0),
+        const Offset(-60, 0),
         kind: PointerDeviceKind.mouse,
       );
       await tester.pump();
       final after = tester.getCenter(
         find.byKey(DesktopStage.stationKey(StationKind.mailbox)),
       );
-      expect(after.dx, closeTo(before.dx - 200, 1));
+      expect(after.dx, closeTo(before.dx - 60, 1));
       expect(
         saved.single.stationPositions['mailbox'],
-        closeTo(0.92 - 200 / 1280, 0.001),
+        closeTo(0.92 - 60 / 1280, 0.001),
       );
+    });
+
+    testWidgets('a dragged station stops before its neighbour', (tester) async {
+      await pumpDesktop(tester, FakeOfficeModel());
+      await tester.drag(
+        find.byKey(DesktopStage.stationKey(StationKind.mailbox)),
+        const Offset(-400, 0),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      final mailbox = tester.getRect(
+        find.byKey(DesktopStage.stationKey(StationKind.mailbox)),
+      );
+      final tv = tester.getRect(
+        find.byKey(DesktopStage.stationKey(StationKind.tv)),
+      );
+      expect(mailbox.left - tv.right, closeTo(StationLayout.dragGap, 1));
     });
 
     testWidgets('Esc closes the bubble, a second Esc quits', (tester) async {
@@ -226,11 +244,35 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      final coffeeX = tester
+      final tvX = tester
           .getCenter(find.byKey(DesktopStage.actorKey(Seat.gpt)))
           .dx;
-      expect(coffeeX, isNot(closeTo(deskX, 1)));
-      expect(coffeeX, closeTo(1280 * 0.78 - 17 * 4, 1));
+      expect(tvX, isNot(closeTo(deskX, 1)));
+      expect(tvX, closeTo(1280 * 0.78 - 19 * 4, 1));
+    });
+
+    testWidgets('tapping the TV lists the usage windows', (tester) async {
+      final model = FakeOfficeModel(
+        snapshot: OfficeSnapshot(
+          seats: OfficeSnapshot.initial().seats,
+          usage: [
+            UsageSnapshot(
+              seat: Seat.claude,
+              window: 'five_hour',
+              usedPct: 42,
+              resetsAt: DateTime(2026, 10, 29, 14, 30),
+              source: 'claude-cli',
+              fetchedAt: DateTime(2026, 10, 29, 12),
+            ),
+          ],
+        ),
+      );
+      await pumpDesktop(tester, model);
+      await tapStation(tester, StationKind.tv);
+      expect(find.byType(TvBubble), findsOneWidget);
+      expect(find.textContaining('5 saat'), findsOneWidget);
+      expect(find.textContaining('%42'), findsOneWidget);
+      expect(find.textContaining('14:30'), findsOneWidget);
     });
   });
 }

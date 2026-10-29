@@ -22,6 +22,7 @@ import 'office_actors.dart';
 import 'prompt_bubble.dart';
 import 'settings_bubble.dart';
 import 'stations.dart';
+import 'tv_bubble.dart';
 import 'wallpaper.dart';
 
 /// Requests that reach the stage from outside the widget tree (the tray).
@@ -43,7 +44,7 @@ class DesktopCommands extends ChangeNotifier {
 }
 
 /// Which bubble is open.
-enum _BubbleKind { prompt, status, whiteboard, mailbox, settings }
+enum _BubbleKind { prompt, status, whiteboard, mailbox, settings, tv }
 
 class _OpenBubble {
   const _OpenBubble(this.kind, {this.seat, this.station});
@@ -143,6 +144,7 @@ class _DesktopStageState extends State<DesktopStage> {
   late DesktopWallpaper? _wallpaper = widget.initialWallpaper;
   int _tick = 0;
   Seat? _hovered;
+  StationKind? _dragging;
   _OpenBubble? _bubble;
   late String? _folder =
       _settings.recentFolders.firstOrNull ?? widget.model.cwd;
@@ -295,8 +297,8 @@ class _DesktopStageState extends State<DesktopStage> {
       case StationKind.deskClaude:
       case StationKind.deskGpt:
         _tapActor(kind.owner!);
-      case StationKind.coffee:
-        break;
+      case StationKind.tv:
+        _open(_OpenBubble(_BubbleKind.tv, station: kind));
     }
   }
 
@@ -378,15 +380,16 @@ class _DesktopStageState extends State<DesktopStage> {
 
   void _dragStation(StationKind kind, double dx) {
     final layout = _layout!;
-    final fraction = ((layout.centerX(kind) + dx) / layout.width).clamp(
-      StationLayout.minFraction,
-      StationLayout.maxFraction,
-    );
-    setState(() => layout.fractions[kind] = fraction);
+    final wanted = (layout.centerX(kind) + dx) / layout.width;
+    setState(() {
+      _dragging = kind;
+      layout.dragTo(kind, wanted);
+    });
   }
 
   void _dropStation() {
     final layout = _layout!;
+    _dragging = null;
     _choreo?.relayout(layout);
     if (!widget.animate) _choreo?.settle();
     _updateSettings(_settings.copyWith(stationPositions: layout.toSettings()));
@@ -471,21 +474,55 @@ class _DesktopStageState extends State<DesktopStage> {
 
   StationState _stationState(OfficeSnapshot snapshot) {
     final screens = <Seat, ScreenMode>{};
-    var brewing = false;
     for (final actor in _choreo!.actors.values) {
       final desk = StationKind.deskOf(actor.seat);
       final atDesk = !actor.walking && actor.station == desk;
       screens[actor.seat] = atDesk && actor.mood != ActorMood.stand
           ? screenFor(actor.visual)
           : ScreenMode.off;
-      brewing |= actor.mood == ActorMood.coffee && !actor.walking;
     }
     return StationState(
       screens: screens,
       notes: snapshot.tasks.take(6).toList(),
       flagUp: snapshot.unreadReports > 0,
-      brewing: brewing,
+      bars: usageBars(snapshot),
     );
+  }
+
+  /// The TV's bars: every rate-limit window the CLIs reported (Claude's
+  /// 5-hour and weekly), then a dim token bar for a seat without limits.
+  static List<UsageBar> usageBars(OfficeSnapshot snapshot) {
+    final bars = <UsageBar>[];
+    for (final seat in const [Seat.claude, Seat.gpt]) {
+      final windows = snapshot.usage.where((u) => u.seat == seat).toList()
+        ..sort((a, b) => a.window.compareTo(b.window));
+      if (windows.isEmpty) {
+        final tokens = snapshot.seat(seat).tokensIn;
+        if (tokens > 0) {
+          bars.add(
+            UsageBar(
+              seat: seat,
+              window: 'tokens',
+              pct: (tokens / 400000).clamp(0, 1).toDouble(),
+              dim: true,
+              tokens: tokens,
+            ),
+          );
+        }
+        continue;
+      }
+      for (final u in windows) {
+        bars.add(
+          UsageBar(
+            seat: seat,
+            window: u.window,
+            pct: (u.usedPct / 100).clamp(0, 1).toDouble(),
+            resetsAt: u.resetsAt,
+          ),
+        );
+      }
+    }
+    return bars;
   }
 
   @override
@@ -533,6 +570,7 @@ class _DesktopStageState extends State<DesktopStage> {
                 wallpaper: _wallpaper,
                 devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
                 hovered: _hovered,
+                lifted: _dragging,
                 windowed: widget.windowed,
               ),
             ),
@@ -647,6 +685,12 @@ class _DesktopStageState extends State<DesktopStage> {
       _BubbleKind.mailbox => MailboxBubble(
         key: _bubbleKey,
         reports: snapshot.reports,
+        pointerX: pointerX,
+        onClose: _closeBubble,
+      ),
+      _BubbleKind.tv => TvBubble(
+        key: _bubbleKey,
+        bars: usageBars(snapshot),
         pointerX: pointerX,
         onClose: _closeBubble,
       ),

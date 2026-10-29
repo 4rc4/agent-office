@@ -7,6 +7,14 @@ import '../state/seat_state.dart';
 /// Solid fills only, the navy [OfficeColors.outline] is the one border
 /// colour, no translucent tints.
 abstract final class OfficeColors {
+  /// Bar colour for a usage fraction: calm below 70 %, warm below 90 %,
+  /// red at the limit.
+  static Color usage(double pct) => pct < 0.7
+      ? const Color(0xFF4CAF50)
+      : pct < 0.9
+      ? const Color(0xFFF2B33D)
+      : const Color(0xFFE04B4B);
+
   static const Color outline = Color(0xFF2C2F7A);
   static const Color background = Color(0xFF0F1124);
   static const Color surface = Color(0xFF1A1D3D);

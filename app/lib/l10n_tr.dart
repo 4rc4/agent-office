@@ -39,6 +39,11 @@ abstract final class Tr {
   static const String reportFailed = 'Başarısız';
   static const String olderReports = 'Önceki raporlar';
   static const String reportFrom = 'Rapor';
+  static const String tv = 'Televizyon';
+  static const String usageLimits = 'Kullanım limitleri';
+  static const String noUsage =
+      'Henüz limit bilgisi yok; Claude çalışınca gelir.';
+  static const String tokensOnly = 'jeton';
   static const String model = 'Model';
   static const String effort = 'Düşünme';
   static const String defaultChoice = 'Varsayılan';
@@ -48,6 +53,27 @@ abstract final class Tr {
   static const String claudeEffort = 'Claude düşünme';
   static const String codexModel = 'Codex modeli';
   static const String codexEffort = 'Codex düşünme';
+
+  /// Display name of a rate-limit window the CLI reports.
+  static String windowLabel(String window) => switch (window) {
+    'five_hour' => '5 saat',
+    'seven_day' => 'haftalık',
+    _ => window,
+  };
+
+  /// "14:30'da sıfırlanır", with the date when it is not today.
+  static String resetsAt(DateTime at, {DateTime? now}) {
+    final local = at.toLocal();
+    final today = (now ?? DateTime.now()).toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final time = '${two(local.hour)}:${two(local.minute)}';
+    final sameDay =
+        local.year == today.year &&
+        local.month == today.month &&
+        local.day == today.day;
+    final day = sameDay ? '' : '${two(local.day)}.${two(local.month)} ';
+    return "$day$time'da sıfırlanır";
+  }
 
   /// Display name of an effort level; unknown levels show as they are.
   static String effortLabel(String effort) => switch (effort) {

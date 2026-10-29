@@ -14,13 +14,16 @@ enum ActorMood {
   work,
   read,
   wait,
-  coffee,
+  watch,
   celebrate,
   fail;
 
   /// Whether the pose changes from frame to frame (needs the clock).
   bool get animates => switch (this) {
-    ActorMood.stand || ActorMood.sleep || ActorMood.wait => false,
+    ActorMood.stand ||
+    ActorMood.sleep ||
+    ActorMood.wait ||
+    ActorMood.watch => false,
     _ => true,
   };
 }
@@ -187,7 +190,11 @@ class Choreographer {
         actor.mood = ActorMood.sleep;
         actor.moodTicks = 0;
         actor.idleAt = now.add(_seconds(25, 50));
-      } else if (roll < 0.75) {
+      } else if (roll < 0.55) {
+        // One time in four: watch some TV.
+        _goTo(actor, StationKind.tv, ActorMood.watch);
+        actor.idleAt = now.add(_seconds(10, 25));
+      } else if (roll < 0.8) {
         final spot = _freeSpot();
         if (spot != null) _goToX(actor, spot, null, ActorMood.stand);
         actor.idleAt = now.add(_seconds(8, 20));
@@ -227,7 +234,7 @@ class Choreographer {
       case SeatVisual.waitingUser:
         _goToX(actor, _layout.userSpotX, null, ActorMood.wait);
       case SeatVisual.onBreak:
-        _goTo(actor, StationKind.coffee, ActorMood.coffee);
+        _goTo(actor, StationKind.tv, ActorMood.watch);
       case SeatVisual.celebrating:
         _goTo(actor, desk, ActorMood.celebrate);
       case SeatVisual.failed:

@@ -192,6 +192,7 @@ class OfficeSnapshot {
     this.unreadReports = 0,
     this.paused = false,
     this.statusLine = '',
+    this.usage = const [],
   });
 
   /// One entry per [Seat], in Seat.values order.
@@ -219,6 +220,10 @@ class OfficeSnapshot {
 
   /// One line for the bottom bar ("Claude is planning...", "Office asleep").
   final String statusLine;
+
+  /// Latest rate-limit usage per seat and window, from the CLIs; the TV
+  /// shows it.
+  final List<UsageSnapshot> usage;
 
   SeatSnapshot seat(Seat seat) => seats.firstWhere((s) => s.seat == seat);
 

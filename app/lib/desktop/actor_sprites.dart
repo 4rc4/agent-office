@@ -2,6 +2,7 @@ import '../scene/objects.dart';
 import '../scene/palette.dart';
 import '../scene/pixel.dart';
 import '../scene/sprites.dart';
+import '../state/seat_state.dart';
 import 'office_actors.dart';
 import 'stations.dart';
 
@@ -75,7 +76,7 @@ CharacterPose _poseFor(Actor actor, int frame) {
       stance: Stance.standing,
       arms: Arms.raisedRight,
     ),
-    ActorMood.coffee => CharacterPose(
+    ActorMood.watch => CharacterPose(
       stance: Stance.standing,
       arms: Arms.mug,
       frame: frame,
@@ -153,8 +154,10 @@ void _drawMoodProp(PixelBuffer b, Actor actor, int x, int y, int frame) {
       break;
     case ActorMood.wait:
       _badge(b, x + 18, y - 12, Palette.yellow, Palette.yellowDark, _question);
-    case ActorMood.coffee:
-      _clockBadge(b, x + 18, y - 12);
+    case ActorMood.watch:
+      // Watching idly needs no badge; a forced break (rate limit) shows the
+      // clock.
+      if (actor.visual == SeatVisual.onBreak) _clockBadge(b, x + 18, y - 12);
     case ActorMood.celebrate:
       drawCheck(b, x + 16, y - 16);
     case ActorMood.fail:

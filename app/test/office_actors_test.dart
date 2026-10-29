@@ -38,7 +38,7 @@ void main() {
     test('settings override the defaults and round-trip', () {
       final layout = _layout(fractions: {'mailbox': 0.5, 'bogus': 0.1});
       expect(layout.centerX(StationKind.mailbox), 640);
-      expect(layout.centerX(StationKind.coffee), 1280 * 0.78);
+      expect(layout.centerX(StationKind.tv), 1280 * 0.78);
       expect(layout.toSettings()['mailbox'], 0.5);
       expect(layout.toSettings().keys, StationKind.values.map((k) => k.name));
       expect(
@@ -49,10 +49,7 @@ void main() {
 
     test('overlapsStation covers props and their slots', () {
       final layout = _layout();
-      expect(
-        layout.overlapsStation(layout.centerX(StationKind.coffee)),
-        isTrue,
-      );
+      expect(layout.overlapsStation(layout.centerX(StationKind.tv)), isTrue);
       expect(layout.overlapsStation(layout.userSpotX), isFalse);
     });
   });
@@ -109,7 +106,7 @@ void main() {
       final cases = {
         SeatVisual.shell: (StationKind.deskGpt, ActorMood.work),
         SeatVisual.reading: (StationKind.deskGpt, ActorMood.read),
-        SeatVisual.onBreak: (StationKind.coffee, ActorMood.coffee),
+        SeatVisual.onBreak: (StationKind.tv, ActorMood.watch),
         SeatVisual.failed: (StationKind.deskGpt, ActorMood.fail),
         SeatVisual.sleeping: (null, ActorMood.sleep),
       };
