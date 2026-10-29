@@ -3,6 +3,7 @@ import 'package:agent_office_app/desktop/desktop_app.dart';
 import 'package:agent_office_app/desktop/desktop_layer.dart';
 import 'package:agent_office_app/desktop/desktop_stage.dart';
 import 'package:agent_office_app/desktop/info_bubbles.dart';
+import 'package:agent_office_app/desktop/notice_bubble.dart';
 import 'package:agent_office_app/desktop/prompt_bubble.dart';
 import 'package:agent_office_app/desktop/settings_bubble.dart';
 import 'package:agent_office_app/desktop/stations.dart';
@@ -200,6 +201,48 @@ void main() {
       expect(model.stopped, ['s1']);
       expect(model.stopCalls, 0);
     });
+
+    testWidgets('a new report shows a notice over the mailbox and peeks', (
+      tester,
+    ) async {
+      final model = FakeOfficeModel();
+      await pumpDesktop(tester, model);
+      expect(find.byType(NoticeBubble), findsNothing);
+      model.snapshot = workingSnapshot();
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(NoticeBubble), findsOneWidget);
+      expect(find.textContaining('README için kurulum bölümü'), findsOneWidget);
+      expect(runner.methods, contains('peek'));
+      // Only the mailbox and the notice take the mouse while it shows.
+      expect(runner.hitRectCalls.last, hasLength(2 * 4));
+
+      await tester.tap(find.byType(NoticeBubble));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(NoticeBubble), findsNothing);
+      expect(find.byType(MailboxBubble), findsOneWidget);
+      expect(model.markReadCalls, 1);
+    });
+
+    testWidgets(
+      'the notice goes away by itself and never peeks over a bubble',
+      (tester) async {
+        final model = FakeOfficeModel();
+        await pumpDesktop(tester, model);
+        await tapStation(tester, StationKind.whiteboard);
+        model.snapshot = workingSnapshot();
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(NoticeBubble), findsOneWidget);
+        expect(runner.methods, isNot(contains('peek')));
+        await tester.pump(
+          DesktopStage.noticeDuration + const Duration(seconds: 1),
+        );
+        expect(find.byType(NoticeBubble), findsNothing);
+        expect(find.byType(WhiteboardBubble), findsOneWidget);
+      },
+    );
 
     testWidgets('the mailbox shows the letter, marks it read and copies', (
       tester,

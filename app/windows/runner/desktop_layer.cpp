@@ -121,6 +121,25 @@ void DesktopLayer::Release() {
   }
 }
 
+void DesktopLayer::Peek(UINT ms) {
+  peeking_ = true;
+  if (raised_) {
+    ApplyRegion();
+  } else {
+    Raise(false);
+  }
+  SetTimer(window_, kPeekTimerId, ms, nullptr);
+}
+
+void DesktopLayer::EndPeek() {
+  KillTimer(window_, kPeekTimerId);
+  if (!peeking_) {
+    return;
+  }
+  peeking_ = false;
+  Poll();
+}
+
 void DesktopLayer::SetHitRects(std::vector<RECT> rects) {
   rects_ = std::move(rects);
   if (raised_) {
@@ -166,7 +185,7 @@ bool DesktopLayer::Poll() {
   }
 
   if (raised_) {
-    if (!pinned_ && !inside && workerw_ != nullptr) {
+    if (!pinned_ && !peeking_ && !inside && workerw_ != nullptr) {
       Lower();
     } else {
       ApplyRegion();
@@ -223,7 +242,7 @@ void DesktopLayer::ApplyRegion() {
   const bool have_cursor = CursorInWindow(window_, &local);
   std::vector<RECT> visible;
   for (const RECT& rect : rects_) {
-    if (pinned_ || (have_cursor && PtInRect(&rect, local))) {
+    if (pinned_ || peeking_ || (have_cursor && PtInRect(&rect, local))) {
       visible.push_back(rect);
     }
   }

@@ -41,6 +41,7 @@ abstract final class Tr {
   static const String reportFrom = 'Rapor';
   static const String tv = 'Televizyon';
   static const String taskDetails = 'Görev';
+  static const String newReport = 'Yeni rapor';
   static const String steer = 'Yönlendir';
   static const String steerHint = 'Yeni talimat… (oturum devam eder)';
   static const String steerGptHint = 'Yeni talimat… (GPT baştan alır)';

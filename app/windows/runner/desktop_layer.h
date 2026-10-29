@@ -31,6 +31,9 @@ class DesktopLayer {
   // Timer id of the cursor watch (WM_TIMER wparam).
   static constexpr UINT_PTR kTimerId = 0x4F46;
 
+  // Timer id that ends a |Peek| (WM_TIMER wparam).
+  static constexpr UINT_PTR kPeekTimerId = 0x4F47;
+
   // Finds (spawning it when needed) the WorkerW behind the desktop icons, or
   // nullptr when the shell does not provide one.
   static HWND FindWorkerW();
@@ -44,6 +47,12 @@ class DesktopLayer {
   // |Release| (a bubble is open).
   void Pin();
   void Release();
+
+  // Shows every hit rect over other windows for |ms| without activating
+  // the window (a report notice); |EndPeek| runs on the timer and lowers
+  // the window again unless it is pinned or hovered.
+  void Peek(UINT ms);
+  void EndPeek();
 
   // Window-relative physical-pixel rectangles where the window takes mouse
   // input and, while raised, is visible at all. For the full-screen layer
@@ -73,6 +82,7 @@ class DesktopLayer {
   bool entered_ = false;
   bool raised_ = true;
   bool pinned_ = false;
+  bool peeking_ = false;
   std::vector<RECT> rects_;
 
   // The rects the current window region was built from.

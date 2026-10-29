@@ -130,6 +130,10 @@ void FlutterWindow::HandleDesktopCall(
   } else if (method == "sendToBack") {
     desktop_layer_->Release();
     result->Success();
+  } else if (method == "peek") {
+    const auto* ms = std::get_if<int32_t>(call.arguments());
+    desktop_layer_->Peek(ms == nullptr || *ms <= 0 ? 15000 : static_cast<UINT>(*ms));
+    result->Success();
   } else if (method == "setHitRects") {
     const auto* flat = std::get_if<std::vector<double>>(call.arguments());
     if (flat == nullptr) {
@@ -174,6 +178,10 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
         if (desktop_layer_->Poll() && desktop_channel_) {
           desktop_channel_->InvokeMethod("focusLost", nullptr);
         }
+        return 0;
+      }
+      if (desktop_layer_ && wparam == DesktopLayer::kPeekTimerId) {
+        desktop_layer_->EndPeek();
         return 0;
       }
       break;

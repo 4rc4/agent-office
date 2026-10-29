@@ -18,6 +18,7 @@ import 'desktop_layer.dart';
 import 'desktop_painter.dart';
 import 'info_bubbles.dart';
 import 'model_choices.dart';
+import 'notice_bubble.dart';
 import 'office_actors.dart';
 import 'prompt_bubble.dart';
 import 'settings_bubble.dart';
@@ -105,6 +106,9 @@ class DesktopStage extends StatefulWidget {
   /// Context fill from which a character sweats.
   static const double sweatAt = 0.8;
 
+  /// How long the report notice stays over the mailbox.
+  static const Duration noticeDuration = Duration(seconds: 15);
+
   /// Clock period while something moves.
   static const Duration tickPeriod = Duration(milliseconds: 100);
 
@@ -156,6 +160,10 @@ class _DesktopStageState extends State<DesktopStage> {
   late String? _folder =
       _settings.recentFolders.firstOrNull ?? widget.model.cwd;
   final GlobalKey _bubbleKey = GlobalKey();
+  final GlobalKey _noticeKey = GlobalKey();
+  OfficeReport? _notice;
+  Timer? _noticeTimer;
+  String? _noticedRootId;
   PromptOptions _options = const PromptOptions();
   List<String> _attachments = const [];
   final FocusNode _stageFocus = FocusNode(debugLabel: 'desktopStage');
@@ -197,6 +205,7 @@ class _DesktopStageState extends State<DesktopStage> {
     }
     _clock?.cancel();
     _wake?.cancel();
+    _noticeTimer?.cancel();
     _wallpaperClock?.cancel();
     _wallpaper?.image?.dispose();
     _stageFocus.dispose();
@@ -207,12 +216,45 @@ class _DesktopStageState extends State<DesktopStage> {
 
   void _onModel() {
     final choreo = _choreo;
+    final snapshot = widget.model.snapshot;
     if (choreo != null) {
-      choreo.apply(widget.model.snapshot);
+      choreo.apply(snapshot);
       if (!widget.animate) choreo.settle();
+    }
+    final latest = snapshot.reports.firstOrNull;
+    if (latest != null &&
+        snapshot.unreadReports > 0 &&
+        latest.rootId != _noticedRootId) {
+      _noticedRootId = latest.rootId;
+      _showNotice(latest);
     }
     if (mounted) setState(() {});
     _syncClock();
+  }
+
+  /// Pops the report card over the mailbox for [DesktopStage.noticeDuration]
+  /// and asks the runner to show it over other windows, unless a bubble
+  /// already holds the layer in front.
+  void _showNotice(OfficeReport report) {
+    _noticeTimer?.cancel();
+    _notice = report;
+    _noticeTimer = Timer(DesktopStage.noticeDuration, _hideNotice);
+    if (_bubble == null) {
+      unawaited(widget.layer.peek(DesktopStage.noticeDuration));
+    }
+  }
+
+  void _hideNotice() {
+    _noticeTimer?.cancel();
+    _noticeTimer = null;
+    if (_notice == null || !mounted) return;
+    setState(() => _notice = null);
+  }
+
+  void _tapNotice() {
+    _hideNotice();
+    widget.model.markReportsRead();
+    _open(const _OpenBubble(_BubbleKind.mailbox, station: StationKind.mailbox));
   }
 
   /// Starts or stops the 100 ms clock and the idle wake-up timer.
@@ -406,13 +448,26 @@ class _DesktopStageState extends State<DesktopStage> {
   // ---- hit rects -----------------------------------------------------------
 
   void _reportHitRects(List<Rect> rects) {
-    final box = _bubbleKey.currentContext?.findRenderObject();
     final stage = context.findRenderObject();
-    final all = [
-      for (final r in rects) r.inflate(4),
-      if (box is RenderBox && box.hasSize && stage is RenderBox)
-        (box.localToGlobal(Offset.zero, ancestor: stage) & box.size).inflate(4),
-    ];
+    Rect? boxOf(GlobalKey key) {
+      final box = key.currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.hasSize || stage is! RenderBox) {
+        return null;
+      }
+      return (box.localToGlobal(Offset.zero, ancestor: stage) & box.size)
+          .inflate(4);
+    }
+
+    final bubble = boxOf(_bubbleKey);
+    final notice = _notice == null ? null : boxOf(_noticeKey);
+    final List<Rect> all;
+    if (notice != null && bubble == null) {
+      // While the notice peeks over other windows only it and the mailbox
+      // take the mouse; the rest of the office stays behind the icons.
+      all = [_layout!.rect(StationKind.mailbox).inflate(4), notice];
+    } else {
+      all = [for (final r in rects) r.inflate(4), ?bubble, ?notice];
+    }
     if (_sameRects(all, _reportedRects)) return;
     _reportedRects = all;
     final dpr = MediaQuery.devicePixelRatioOf(context);
@@ -620,9 +675,30 @@ class _DesktopStageState extends State<DesktopStage> {
               ),
             ),
           ),
+        if (_notice != null)
+          _noticeWidget(size, _notice!, stationRects[StationKind.mailbox]!),
         if (_bubble != null)
           _bubbleWidget(size, _bubble!, snapshot, stationRects, actorRects),
       ],
+    );
+  }
+
+  /// The report notice above the mailbox, kept inside the screen.
+  Widget _noticeWidget(Size size, OfficeReport report, Rect anchor) {
+    const margin = 16.0;
+    final width = NoticeBubble.width.clamp(0.0, size.width - 2 * margin);
+    final tipX = anchor.center.dx;
+    final left = (tipX - width / 2).clamp(margin, size.width - width - margin);
+    return Positioned(
+      left: left,
+      bottom: size.height - (anchor.top - BubbleSheet.pointerHeight / 4),
+      width: width,
+      child: NoticeBubble(
+        key: _noticeKey,
+        report: report,
+        pointerX: (tipX - left) / width,
+        onTap: _tapNotice,
+      ),
     );
   }
 

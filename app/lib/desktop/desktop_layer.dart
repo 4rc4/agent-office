@@ -42,6 +42,13 @@ class DesktopLayer {
   /// can take keyboard focus. Call while a bubble is open.
   Future<void> bringToFront() => _call<void>('bringToFront');
 
+  /// Shows the layer over other windows for [duration] without taking
+  /// focus (a report notice). Only the hit rects Dart reported are visible;
+  /// the runner lowers the layer again when the time is up unless a bubble
+  /// pinned it or the pointer is on a rect.
+  Future<void> peek(Duration duration) =>
+      _call<void>('peek', duration.inMilliseconds);
+
   /// Lifts [bringToFront]: the runner re-parents the layer under WorkerW
   /// again once the pointer leaves the hit rects.
   Future<void> sendToBack() => _call<void>('sendToBack');
