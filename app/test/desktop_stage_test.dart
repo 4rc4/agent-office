@@ -435,6 +435,52 @@ void main() {
       expect(tvX, closeTo(1280 * 0.78 - 19 * 4, 1));
     });
 
+    testWidgets('the TV caption shows usage without a tap', (tester) async {
+      final model = FakeOfficeModel(
+        snapshot: OfficeSnapshot(
+          seats: OfficeSnapshot.initial().seats,
+          usage: [
+            UsageSnapshot(
+              seat: Seat.claude,
+              window: 'five_hour',
+              usedPct: 42,
+              resetsAt: DateTime(2026, 10, 29, 14, 30),
+              source: 'claude-cli',
+              fetchedAt: DateTime(2026, 10, 29, 12),
+            ),
+          ],
+        ),
+      );
+      await pumpDesktop(tester, model);
+      final caption = find.byKey(DesktopStage.tvCaptionKey);
+      expect(caption, findsOneWidget);
+      expect(
+        find.descendant(of: caption, matching: find.textContaining('%42')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: caption, matching: find.textContaining('14:30')),
+        findsOneWidget,
+      );
+      // It sits under the TV and takes no clicks.
+      final tv = tester.getRect(
+        find.byKey(DesktopStage.stationKey(StationKind.tv)),
+      );
+      expect(tester.getRect(caption).top, greaterThanOrEqualTo(tv.bottom));
+      expect(
+        runner.hitRectCalls.last,
+        hasLength((StationKind.values.length + 2) * 4),
+      );
+      // Opening the TV bubble hides the caption (no duplicate numbers).
+      await tapStation(tester, StationKind.tv);
+      expect(caption, findsNothing);
+    });
+
+    testWidgets('no usage yet: no TV caption', (tester) async {
+      await pumpDesktop(tester, FakeOfficeModel());
+      expect(find.byKey(DesktopStage.tvCaptionKey), findsNothing);
+    });
+
     testWidgets('tapping the TV lists the usage windows', (tester) async {
       final model = FakeOfficeModel(
         snapshot: OfficeSnapshot(

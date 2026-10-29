@@ -27,6 +27,7 @@ import 'settings_bubble.dart';
 import 'stations.dart';
 import 'task_bubble.dart';
 import 'tv_bubble.dart';
+import '../widgets/office_theme.dart';
 import 'wallpaper.dart';
 
 /// Requests that reach the stage from outside the widget tree (the tray).
@@ -95,6 +96,7 @@ class DesktopStage extends StatefulWidget {
   static Key actorKey(Seat seat) => Key('stage.actor.${seat.name}');
   static Key stationKey(StationKind kind) => Key('stage.station.${kind.name}');
   static const Key backdropKey = Key('stage.backdrop');
+  static const Key tvCaptionKey = Key('stage.tvCaption');
 
   /// How often the wallpaper is re-read from the runner (a window behind
   /// the icons gets no change broadcasts).
@@ -715,6 +717,8 @@ class _DesktopStageState extends State<DesktopStage> {
               ),
             ),
           ),
+        if (_bubble?.kind != _BubbleKind.tv)
+          ?_tvCaption(size, snapshot, stationRects[StationKind.tv]!),
         if (snapshot.approvals.isNotEmpty)
           _approvalWidget(size, snapshot.approvals.first, actorRects),
         if (_notice != null)
@@ -723,6 +727,87 @@ class _DesktopStageState extends State<DesktopStage> {
           _bubbleWidget(size, _bubble!, snapshot, stationRects, actorRects),
       ],
     );
+  }
+
+  /// The usage numbers under the TV (below the floor line, clear of the
+  /// characters' bubbles), always on (no tap needed): one line
+  /// per bar with the percentage and the reset time. Takes no clicks and is
+  /// not a hit rect, so it stays behind the desktop icons. Null without
+  /// usage data.
+  Widget? _tvCaption(Size size, OfficeSnapshot snapshot, Rect tv) {
+    final bars = usageBars(snapshot);
+    if (bars.isEmpty) return null;
+    const width = 340.0;
+    const margin = 8.0;
+    final left = (tv.center.dx - width / 2).clamp(
+      margin,
+      size.width - width - margin,
+    );
+    const text = TextStyle(
+      color: Color(0xFFF4EEDC),
+      fontSize: 12,
+      height: 1.3,
+      fontWeight: FontWeight.w600,
+    );
+    return Positioned(
+      left: left,
+      top: tv.bottom + 6,
+      width: width,
+      child: IgnorePointer(
+        key: DesktopStage.tvCaptionKey,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: const Color(0xD91A1D3D),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: OfficeColors.outline, width: 1.5),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final bar in bars)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.only(right: 6),
+                          decoration: BoxDecoration(
+                            color: bar.dim
+                                ? PixelColors.inkMuted
+                                : OfficeColors.usage(bar.pct),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        Flexible(child: Text(_captionLine(bar), style: text)),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _captionLine(UsageBar bar) {
+    final seat = Tr.seatName(bar.seat);
+    if (bar.dim) {
+      final k = (bar.tokens / 1000).toStringAsFixed(
+        bar.tokens >= 100000 ? 0 : 1,
+      );
+      return '$seat · ${k}k ${Tr.tokensOnly}';
+    }
+    final pct = '%${(bar.pct * 100).round()}';
+    final resets = bar.resetsAt;
+    return '$seat · ${Tr.windowLabel(bar.window)} $pct'
+        '${resets == null ? '' : ' · ${Tr.resetsAt(resets)}'}';
   }
 
   /// The oldest pending permission request, as a balloon over its seat.
