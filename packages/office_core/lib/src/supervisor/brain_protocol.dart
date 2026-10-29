@@ -124,6 +124,22 @@ it. Reply with the report only.''');
     return buffer.toString();
   }
 
+  /// A note the user typed while the office was working on this root; it
+  /// is prepended to the brain's next turn.
+  static String userNote(String note) =>
+      'Note from the user, received while you were working (take it into '
+      'account):\n${note.trim()}';
+
+  /// First message of a worker session restarted because the user steered
+  /// it: the session keeps its context, the note changes the course.
+  static String steerTurn(String note) =>
+      '''
+The user interrupted this task with a new instruction. Check `git status`
+for what you already changed, then continue the task taking this into
+account:
+${note.trim()}
+''';
+
   /// Sent as the first message after a restart, before the real request.
   static String resumeTurn(String checkpointSummary) =>
       '''

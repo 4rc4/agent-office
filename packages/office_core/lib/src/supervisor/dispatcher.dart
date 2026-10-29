@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../adapters/seat_adapter.dart';
 import '../board/task_board.dart';
+import '../board/transitions.dart';
 import '../model/agent_event.dart';
 import '../model/session.dart';
 import '../model/task.dart';
@@ -17,10 +18,13 @@ typedef DiffStatCollector = Future<String> Function(String cwd);
 typedef AgentEventSink = void Function(AgentEvent event);
 
 /// Continue [sessionRef] with [message] instead of starting the task afresh.
+/// How the next attempt of a task starts: resume [sessionRef] with
+/// [message], or, with a null [sessionRef], start fresh with [message] as
+/// the whole prompt.
 class ResumeHint {
   const ResumeHint({required this.sessionRef, required this.message});
 
-  final String sessionRef;
+  final String? sessionRef;
   final String message;
 }
 
@@ -71,6 +75,17 @@ class Dispatcher {
   final Map<String, ResumeHint> _resumeHints = {};
   final Map<String, String> _diffStats = {};
 
+  /// Live runs by task id, for [stopTask] and [steerTask].
+  final Map<String, AgentRun> _runs = {};
+  final Set<String> _userStops = {};
+  final Set<String> _userSteers = {};
+
+  /// Restarts caused by [steerTask], which do not count as attempts.
+  final Map<String, int> _steerCredits = {};
+
+  /// How long a user stop waits for the CLI before killing it.
+  static const Duration userStopGrace = Duration(seconds: 2);
+
   /// Task ids with a run in flight right now.
   Set<String> get activeTaskIds => _active.keys.toSet();
 
@@ -79,6 +94,55 @@ class Dispatcher {
       _resumeHints[taskId] = hint;
 
   /// Seats that have an adapter and spare capacity.
+  /// Stops [taskId] for good: a live run is killed and the task fails with
+  /// `stopped by user` (no retry); a waiting task fails at once. False when
+  /// the task is unknown or already finished.
+  Future<bool> stopTask(String taskId) async {
+    final task = board.getTask(taskId);
+    if (task == null || task.status.isTerminal) return false;
+    final run = _runs[taskId];
+    if (run == null) {
+      if (canTransition(task.status, TaskStatus.failed)) {
+        board.transition(taskId, TaskStatus.failed, note: 'stopped by user');
+      }
+      return true;
+    }
+    _userStops.add(taskId);
+    await _stopRun(run);
+    return true;
+  }
+
+  /// Restarts [taskId] with [note]: a live run is killed and the task is
+  /// dispatched again in its session (or fresh, with the prompt plus the
+  /// note) without spending a retry; a waiting task gets the note on its
+  /// first start. False when the task is unknown or finished.
+  Future<bool> steerTask(String taskId, String note) async {
+    final task = board.getTask(taskId);
+    if (task == null || task.status.isTerminal) return false;
+    final stored = board.getSession(taskId)?.sessionRef;
+    final session = stored == null || stored.isEmpty ? null : stored;
+    _resumeHints[taskId] = ResumeHint(
+      sessionRef: session,
+      message: session == null
+          ? '${task.prompt}\n\n${BrainProtocol.userNote(note)}'
+          : BrainProtocol.steerTurn(note),
+    );
+    final run = _runs[taskId];
+    if (run == null) return true;
+    _userSteers.add(taskId);
+    _steerCredits.update(taskId, (n) => n + 1, ifAbsent: () => 1);
+    await _stopRun(run);
+    return true;
+  }
+
+  static Future<void> _stopRun(AgentRun run) async {
+    try {
+      await run.stop(grace: userStopGrace);
+    } on Object {
+      // Already gone.
+    }
+  }
+
   Set<Seat> freeSeats() {
     final busy = <Seat, int>{};
     for (final run in _active.values) {
@@ -203,6 +267,7 @@ class Dispatcher {
       _startFailed(dispatched, 'could not start ${seat.name}: $error');
       return;
     }
+    _runs[dispatched.id] = run;
     board.transition(
       dispatched.id,
       TaskStatus.running,
@@ -217,17 +282,47 @@ class Dispatcher {
     } on Object catch (error) {
       result = AgentResult(success: false, error: '$error');
     }
+    _runs.remove(dispatched.id);
     try {
       await run.stop();
     } on Object {
       // The process is already gone; nothing to clean up.
     }
     await subscription.cancel();
-    if (result.success) {
+    if (_userStops.remove(dispatched.id)) {
+      _endedByUser(dispatched, token, TaskStatus.failed, 'stopped by user');
+    } else if (_userSteers.remove(dispatched.id)) {
+      _endedByUser(
+        dispatched,
+        token,
+        TaskStatus.assigned,
+        'steered by user: restarting with the note',
+      );
+    } else if (result.success) {
       await _succeeded(dispatched, token, result);
     } else {
       _failedAttempt(dispatched, token, result.error ?? 'unknown error');
     }
+  }
+
+  /// Closes the attempt the user ended and moves the task to [next]
+  /// (`failed` for a stop, `assigned` for a steer).
+  void _endedByUser(
+    TaskRecord task,
+    String token,
+    TaskStatus next,
+    String note,
+  ) {
+    final accepted = board.completeIfCurrent(
+      task.id,
+      token,
+      resultSummary: next == TaskStatus.failed
+          ? 'STOPPED: by user'
+          : 'STEERED: restarting with the user note',
+      note: note,
+    );
+    if (!accepted) return;
+    board.transition(task.id, next, note: note);
   }
 
   void _forward(TaskRecord task, AgentEvent event, AgentRun run) {
@@ -286,11 +381,12 @@ class Dispatcher {
       note: 'attempt ${task.attempt} failed',
     );
     if (!accepted) return;
-    if (task.attempt < maxAttempts) {
+    final spent = task.attempt - (_steerCredits[task.id] ?? 0);
+    if (spent < maxAttempts) {
       board.transition(
         task.id,
         TaskStatus.assigned,
-        note: 'retry ${task.attempt + 1}/$maxAttempts',
+        note: 'retry ${spent + 1}/$maxAttempts',
       );
     } else {
       board.transition(

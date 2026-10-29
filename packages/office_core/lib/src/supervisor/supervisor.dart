@@ -74,6 +74,16 @@ class Supervisor {
 
   final _events = StreamController<AgentEvent>.broadcast();
 
+  /// The brain of every root being driven, for [stopTask].
+  final Map<String, _Brain> _brains = {};
+
+  /// Roots the user stopped; their drive ends with `stopped by user`.
+  final Set<String> _stoppedRoots = {};
+
+  /// Notes from [steerTask] on a planned root, handed to the brain at its
+  /// next turn.
+  final Map<String, List<String>> _rootNotes = {};
+
   /// Every event from the brain and the workers, stamped with its task id.
   Stream<AgentEvent> get events => _events.stream;
 
@@ -109,6 +119,48 @@ class Supervisor {
     ]);
     board.recordNote(root.id, 'direct', seat.name);
     return _driveRoot(root.id);
+  }
+
+  /// Stops [taskId]. A subtask fails with `stopped by user` and never
+  /// retries; a direct root stops its worker; a planned root stops every
+  /// open subtask and its brain, so the root fails with `stopped by user`.
+  /// False when the task is unknown or already finished.
+  Future<bool> stopTask(String taskId) async {
+    final task = board.getTask(taskId);
+    if (task == null || task.status.isTerminal) return false;
+    if (task.kind == TaskKind.subtask) return dispatcher.stopTask(taskId);
+    if (!_isDirect(taskId)) _stoppedRoots.add(taskId);
+    for (final sub in board.listSubtasks(taskId)) {
+      if (!sub.status.isTerminal) await dispatcher.stopTask(sub.id);
+    }
+    final brain = _brains[taskId];
+    if (brain != null) {
+      await brain.close(byUser: true);
+    } else if (!_isDirect(taskId)) {
+      _failRoot(taskId, 'stopped by user');
+    }
+    return true;
+  }
+
+  /// Hands [note] to [taskId]: a subtask restarts in its session with the
+  /// note (see [Dispatcher.steerTask]); a direct root steers its worker; a
+  /// planned root keeps the note for the brain's next turn. False when the
+  /// task is unknown or finished.
+  Future<bool> steerTask(String taskId, String note) async {
+    final task = board.getTask(taskId);
+    if (task == null || task.status.isTerminal) return false;
+    if (task.kind == TaskKind.subtask) {
+      return dispatcher.steerTask(taskId, note);
+    }
+    if (_isDirect(taskId)) {
+      final worker = board
+          .listSubtasks(taskId)
+          .where((t) => !t.status.isTerminal)
+          .firstOrNull;
+      return worker != null && await dispatcher.steerTask(worker.id, note);
+    }
+    (_rootNotes[taskId] ??= []).add(note);
+    return true;
   }
 
   /// First line of [prompt], at most 60 characters.
@@ -173,6 +225,7 @@ class Supervisor {
     } on Object catch (error) {
       return _failRoot(rootId, 'cannot start root: $error');
     }
+    _brains[rootId] = brain;
     try {
       var mergeInstructions = _storedMergeInstructions(rootId);
       if (board.listSubtasks(rootId).isEmpty) {
@@ -200,12 +253,18 @@ class Supervisor {
         );
       }
       final outcomes = await dispatcher.runSubtasks(rootId);
-      final reply = await brain.ask(
-        BrainProtocol.resultsTurn(
-          outcomes,
-          mergeInstructions: mergeInstructions,
-        ),
+      if (_stoppedRoots.contains(rootId)) {
+        return _failRoot(rootId, 'stopped by user');
+      }
+      var results = BrainProtocol.resultsTurn(
+        outcomes,
+        mergeInstructions: mergeInstructions,
       );
+      final notes = _rootNotes.remove(rootId);
+      if (notes != null && notes.isNotEmpty) {
+        results = '${BrainProtocol.userNote(notes.join('\n'))}\n\n$results';
+      }
+      final reply = await brain.ask(results);
       if (!reply.success) {
         return _failRoot(rootId, 'final brain turn failed: ${reply.error}');
       }
@@ -222,6 +281,7 @@ class Supervisor {
     } on Object catch (error) {
       return _failRoot(rootId, 'supervisor error: $error');
     } finally {
+      _brains.remove(rootId);
       await brain.close();
     }
   }
@@ -286,6 +346,8 @@ class Supervisor {
 
   TaskRecord _failRoot(String rootId, String reason) {
     final root = board.requireTask(rootId);
+    if (_stoppedRoots.remove(rootId)) reason = 'stopped by user';
+    _rootNotes.remove(rootId);
     board.recordNote(rootId, 'root_failed', reason);
     if (canTransition(root.status, TaskStatus.failed)) {
       board.transition(rootId, TaskStatus.failed, note: reason);
@@ -343,6 +405,7 @@ class _Brain {
   final SeatAdapter adapter;
   AgentRun? _run;
   StreamSubscription<AgentEvent>? _subscription;
+  bool _closedByUser = false;
 
   TaskBoard get _board => supervisor.board;
 
@@ -364,7 +427,10 @@ class _Brain {
       }
     }
     var result = await _awaitTurn();
-    if (!result.success && result.exitCode != null && !resumed) {
+    if (!result.success &&
+        result.exitCode != null &&
+        !resumed &&
+        !_closedByUser) {
       _board.recordNote(
         root.id,
         'brain_resumed',
@@ -390,15 +456,19 @@ class _Brain {
     return result;
   }
 
-  /// Stops the run (closing stdin) and drops the event subscription.
-  Future<void> close() async {
+  /// Stops the run (closing stdin) and drops the event subscription. With
+  /// [byUser] the run is killed after a short grace and never resumed.
+  Future<void> close({bool byUser = false}) async {
+    if (byUser) _closedByUser = true;
     await _subscription?.cancel();
     _subscription = null;
     final run = _run;
     _run = null;
     if (run == null) return;
     try {
-      await run.stop();
+      await run.stop(
+        grace: byUser ? Dispatcher.userStopGrace : const Duration(seconds: 20),
+      );
     } on Object {
       // Already gone.
     }

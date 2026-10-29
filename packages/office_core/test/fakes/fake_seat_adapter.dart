@@ -7,7 +7,17 @@ import 'package:office_core/src/model/task.dart';
 /// One scripted turn: [events] are emitted in order, then [result] completes
 /// `turnDone`. A `turnCompleted` or `turnFailed` event is appended by the run.
 class ScriptedTurn {
-  const ScriptedTurn({required this.result, this.events = const []});
+  const ScriptedTurn({
+    required this.result,
+    this.events = const [],
+    this.hangs = false,
+  });
+
+  /// A turn that never ends on its own: the events play, then `turnDone`
+  /// stays pending until [FakeAgentRun.stop] fails it (a process kill).
+  const ScriptedTurn.hang({this.events = const []})
+    : result = const AgentResult(success: false, error: 'hung'),
+      hangs = true;
 
   factory ScriptedTurn.success(
     String text, {
@@ -27,6 +37,7 @@ class ScriptedTurn {
 
   final List<AgentEvent> events;
   final AgentResult result;
+  final bool hangs;
 }
 
 /// How one fake run behaves: it announces [sessionRef] on start, then plays
@@ -147,6 +158,12 @@ class FakeAgentRun implements AgentRun {
   @override
   Future<void> stop({Duration grace = const Duration(seconds: 20)}) async {
     stopped = true;
+    if (!_turn.isCompleted) {
+      // Like a killed CLI: the pending turn ends without a result.
+      _turn.complete(
+        const AgentResult(success: false, error: 'process stopped'),
+      );
+    }
     if (!_events.isClosed) await _events.close();
   }
 
@@ -171,6 +188,7 @@ class FakeAgentRun implements AgentRun {
       _emit(event);
       await Future<void>.delayed(Duration.zero);
     }
+    if (turn.hangs) return;
     _emit(
       AgentEvent(
         seat: seat,
