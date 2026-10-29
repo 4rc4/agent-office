@@ -24,6 +24,12 @@ abstract class OfficeModel extends ChangeNotifier {
   /// Clears [OfficeSnapshot.unreadReports] (the mailbox was opened).
   void markReportsRead() {}
 
+  /// Whether new prompts are held back (the tray's "Duraklat").
+  bool get paused => false;
+
+  /// Holds new prompts while paused; resuming submits the held ones.
+  Future<void> setPaused(bool value) async {}
+
   /// Desk the user tapped; the side panel shows it. Null closes the panel.
   Seat? get selectedSeat;
   void selectSeat(Seat? seat);

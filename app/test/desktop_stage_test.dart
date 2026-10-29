@@ -1,6 +1,10 @@
+import 'package:agent_office_app/desktop/autostart.dart';
+import 'package:agent_office_app/desktop/desktop_app.dart';
+import 'package:agent_office_app/desktop/desktop_layer.dart';
 import 'package:agent_office_app/desktop/desktop_stage.dart';
 import 'package:agent_office_app/desktop/info_bubbles.dart';
 import 'package:agent_office_app/desktop/prompt_bubble.dart';
+import 'package:agent_office_app/desktop/settings_bubble.dart';
 import 'package:agent_office_app/desktop/stations.dart';
 import 'package:agent_office_app/runtime/office_settings.dart';
 import 'package:agent_office_app/state/seat_state.dart';
@@ -23,6 +27,7 @@ void main() {
   });
   setUp(() => runner = FakeDesktopChannel());
   tearDown(() => runner.dispose());
+  settingsTests(() => runner);
 
   Future<void> tapActor(WidgetTester tester, Seat seat) async {
     await tester.tap(find.byKey(DesktopStage.actorKey(seat)));
@@ -227,6 +232,75 @@ void main() {
       expect(coffeeX, isNot(closeTo(deskX, 1)));
       expect(coffeeX, closeTo(1280 * 0.78 - 17 * 4, 1));
     });
+  });
+}
+
+/// Remembers what the settings bubble asked for.
+class FakeAutostart extends Autostart {
+  bool enabled = false;
+
+  @override
+  Future<bool> isEnabled() async => enabled;
+
+  @override
+  Future<bool> setEnabled(bool value) async => enabled = value;
+}
+
+void settingsTests(FakeDesktopChannel Function() channel) {
+  testWidgets('the tray opens the settings; Kaydet hands them back', (
+    tester,
+  ) async {
+    final runner = channel();
+    final commands = DesktopCommands();
+    final autostart = FakeAutostart();
+    final saved = <OfficeSettings>[];
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      DesktopApp(
+        model: FakeOfficeModel(),
+        layer: DesktopLayer(),
+        settings: testSettings,
+        onSettingsChanged: saved.add,
+        commands: commands,
+        autostart: autostart,
+        animate: false,
+      ),
+    );
+    await tester.pump();
+    commands.openSettings();
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(SettingsBubble), findsOneWidget);
+    expect(find.text('Ayarlar'), findsOneWidget);
+    expect(runner.methods, contains('bringToFront'));
+    // The bubble's rect joins the hit rects.
+    expect(runner.hitRectCalls.last.length, greaterThan(7 * 4));
+
+    await tester.enterText(
+      find.byKey(SettingsBubble.codexFieldKey),
+      r'C:\tools\codex.cmd',
+    );
+    await tester.tap(find.byKey(SettingsBubble.modeKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('plan').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(SettingsBubble.fakeKey));
+    await tester.pump();
+    await tester.tap(find.byKey(SettingsBubble.autostartKey));
+    await tester.pump();
+    expect(autostart.enabled, isTrue);
+    await tester.tap(find.byKey(SettingsBubble.saveKey));
+    await tester.pump();
+    expect(find.byType(SettingsBubble), findsNothing);
+    final next = saved.single;
+    expect(next.codexExecutable, r'C:\tools\codex.cmd');
+    expect(next.claudeExecutable, 'claude');
+    expect(next.permissionMode, 'plan');
+    expect(next.fake, isTrue);
+    expect(next.recentFolders, testSettings.recentFolders);
+    expect(runner.methods, contains('sendToBack'));
   });
 }
 

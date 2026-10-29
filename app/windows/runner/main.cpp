@@ -24,15 +24,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
-  // `--window` shows the desktop stage in a plain window and `--room` the
-  // old pixel room; otherwise the window is the transparent desktop layer
-  // that Dart parks behind the icons (lib/desktop/desktop_layer.dart).
-  const auto has_flag = [&command_line_arguments](const char* flag) {
-    return std::find(command_line_arguments.begin(),
-                     command_line_arguments.end(),
-                     flag) != command_line_arguments.end();
-  };
-  const bool plain_window = has_flag("--window") || has_flag("--room");
+  // `--window` shows the desktop stage in a plain window; otherwise the
+  // window is the transparent desktop layer that Dart parks behind the
+  // icons (lib/desktop/desktop_layer.dart).
+  const bool plain_window =
+      std::find(command_line_arguments.begin(), command_line_arguments.end(),
+                "--window") != command_line_arguments.end();
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 

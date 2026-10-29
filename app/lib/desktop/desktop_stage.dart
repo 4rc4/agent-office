@@ -12,16 +12,36 @@ import '../scene/screens.dart';
 import '../scene/sprites.dart';
 import '../state/office_model.dart';
 import '../state/seat_state.dart';
+import 'autostart.dart';
 import 'bubble_sheet.dart';
 import 'desktop_layer.dart';
 import 'desktop_painter.dart';
 import 'info_bubbles.dart';
 import 'office_actors.dart';
 import 'prompt_bubble.dart';
+import 'settings_bubble.dart';
 import 'stations.dart';
 
+/// Requests that reach the stage from outside the widget tree (the tray).
+class DesktopCommands extends ChangeNotifier {
+  bool _settingsRequested = false;
+
+  /// Opens the settings bubble.
+  void openSettings() {
+    _settingsRequested = true;
+    notifyListeners();
+  }
+
+  /// Whether [openSettings] was called since the last take.
+  bool takeSettingsRequest() {
+    final requested = _settingsRequested;
+    _settingsRequested = false;
+    return requested;
+  }
+}
+
 /// Which bubble is open.
-enum _BubbleKind { prompt, status, whiteboard, mailbox }
+enum _BubbleKind { prompt, status, whiteboard, mailbox, settings }
 
 class _OpenBubble {
   const _OpenBubble(this.kind, {this.seat, this.station});
@@ -51,6 +71,8 @@ class DesktopStage extends StatefulWidget {
     required this.layer,
     required this.settings,
     this.onSettingsChanged,
+    this.commands,
+    this.autostart = const NoAutostart(),
     this.windowed = false,
     this.animate = true,
   });
@@ -79,6 +101,12 @@ class DesktopStage extends StatefulWidget {
   /// [onSettingsChanged] (the caller saves them).
   final OfficeSettings settings;
   final ValueChanged<OfficeSettings>? onSettingsChanged;
+
+  /// Tray requests (open the settings).
+  final DesktopCommands? commands;
+
+  /// Backs the "Windows ile başlat" switch of the settings bubble.
+  final Autostart autostart;
 
   /// Plain window fallback (`--window`): dark background, no colour key.
   final bool windowed;
@@ -110,12 +138,14 @@ class _DesktopStageState extends State<DesktopStage> {
   void initState() {
     super.initState();
     widget.model.addListener(_onModel);
+    widget.commands?.addListener(_onCommand);
     widget.layer.onFocusLost = _closeBubble;
   }
 
   @override
   void dispose() {
     widget.model.removeListener(_onModel);
+    widget.commands?.removeListener(_onCommand);
     if (widget.layer.onFocusLost == _closeBubble) {
       widget.layer.onFocusLost = null;
     }
@@ -169,6 +199,12 @@ class _DesktopStageState extends State<DesktopStage> {
     final moving = choreo.step(DesktopStage.tickPeriod);
     setState(() => _tick++);
     if (!moving && _hovered == null) _syncClock();
+  }
+
+  void _onCommand() {
+    if (widget.commands?.takeSettingsRequest() ?? false) {
+      _open(const _OpenBubble(_BubbleKind.settings));
+    }
   }
 
   // ---- bubbles -------------------------------------------------------------
@@ -485,13 +521,18 @@ class _DesktopStageState extends State<DesktopStage> {
     Map<StationKind, Rect> stationRects,
     Map<Seat, Rect> actorRects,
   ) {
+    final layout = _layout!;
     final anchor = bubble.seat != null
         ? actorRects[bubble.seat!]!
-        : stationRects[bubble.station!]!;
+        : bubble.station != null
+        ? stationRects[bubble.station!]!
+        : Rect.fromLTWH(layout.userSpotX - 1, layout.floorY - 96, 2, 96);
     const margin = 16.0;
-    final wanted = bubble.kind == _BubbleKind.prompt
-        ? PromptBubble.width
-        : infoBubbleWidth;
+    final wanted = switch (bubble.kind) {
+      _BubbleKind.prompt => PromptBubble.width,
+      _BubbleKind.settings => SettingsBubble.width,
+      _ => infoBubbleWidth,
+    };
     final width = wanted.clamp(0.0, size.width - 2 * margin);
     final tipX = anchor.center.dx;
     final left = (tipX - width / 2).clamp(margin, size.width - width - margin);
@@ -528,6 +569,14 @@ class _DesktopStageState extends State<DesktopStage> {
         key: _bubbleKey,
         reports: snapshot.reports,
         pointerX: pointerX,
+        onClose: _closeBubble,
+      ),
+      _BubbleKind.settings => SettingsBubble(
+        key: _bubbleKey,
+        settings: _settings,
+        autostart: widget.autostart,
+        pointerX: pointerX,
+        onSave: _updateSettings,
         onClose: _closeBubble,
       ),
     };

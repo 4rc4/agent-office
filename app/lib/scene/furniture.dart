@@ -1,12 +1,12 @@
 import 'dart:math' as math;
 
+import 'irect.dart';
 import 'lighting.dart';
 import 'palette.dart';
 import 'pixel.dart';
-import 'scene_layout.dart';
 
 /// Furniture and fixtures. Each painter takes scene-pixel rects from
-/// [SceneLayout] so the layout file stays the single source of positions.
+/// the desktop stations so the layout stays the single source of positions.
 /// Light comes from the window (upper left): highlights top-left, shades
 /// bottom-right, drop shadows down and to the right. Everything is drawn in
 /// the daylight palette; the [SceneLighting] tint on the buffer turns it into
@@ -364,57 +364,6 @@ void paintCurtain(
   }
 }
 
-/// String lights along the top of the back wall, right of the curtain rod:
-/// a wire sagging between hooks and a bulb every twelve pixels. Lit bulbs
-/// alternate warm and cool, one in four dimming by [frame], and throw a
-/// small glow on the wall; unlit ones are plain glass.
-void paintStringLights(PixelBuffer b, SceneLighting lighting, int frame) {
-  const x0 = SceneLayout.stringLightsX;
-  const hookGap = 60;
-  int wireY(int x) {
-    final t = ((x - x0) % hookGap) / hookGap;
-    return SceneLayout.stringLightsY + (5 * math.sin(math.pi * t)).round();
-  }
-
-  for (var x = x0; x < SceneLayout.width; x++) {
-    b.set(x, wireY(x), Palette.ink);
-  }
-  for (var x = x0; x < SceneLayout.width; x += hookGap) {
-    b.fill(x - 1, SceneLayout.stringLightsY - 2, 2, 3, Palette.steelShade);
-  }
-  var i = 0;
-  for (var x = x0 + 6; x < SceneLayout.width - 2; x += 12, i++) {
-    final y = wireY(x);
-    final warm = i.isEven;
-    if (lighting.stringLightsOn) {
-      final dim = (i + frame) % 4 == 0;
-      final color = dim
-          ? (warm ? Palette.amber : Palette.starDim)
-          : (warm ? Palette.bulbWarm : Palette.bulbCool);
-      b.lightPool(
-        x + 1,
-        y + 3,
-        6,
-        5,
-        tint: warm ? Palette.bulbWarm : Palette.bulbCool,
-        strength: dim ? 0.18 : 0.32,
-      );
-      b.emissive(() => _bulb(b, x, y, color));
-    } else {
-      _bulb(b, x, y, Palette.steelLight);
-      b.set(x + 1, y + 3, Palette.steelBase);
-    }
-  }
-}
-
-void _bulb(PixelBuffer b, int x, int y, int color) {
-  b.fill(x, y + 1, 2, 1, Palette.ink);
-  b.fill(x, y + 2, 2, 2, color);
-  b.set(x - 1, y + 3, color);
-  b.set(x + 2, y + 3, color);
-  b.fill(x, y + 4, 2, 1, color);
-}
-
 /// Door with an architrave, a frosted glass pane, two recessed panels, a
 /// brass knob and a steel kick plate.
 void paintDoor(PixelBuffer b, IRect r) {
@@ -663,60 +612,6 @@ void paintClock(PixelBuffer b, IRect r) {
   b.line(cx, cy, cx + 3, cy - 6, Palette.ink);
   b.line(cx, cy, cx - 2, cy + 5, Palette.red);
   b.set(cx, cy, Palette.ink);
-}
-
-/// Three usage meters in dark bezels: a glass column that fills from the
-/// bottom in the seat's accent, a glossy highlight and a status LED on top.
-void paintGauges(
-  PixelBuffer b,
-  IRect r,
-  List<int> accents,
-  List<int> accentDarks,
-  List<double> levels,
-) {
-  for (var i = 0; i < accents.length; i++) {
-    final x = r.x + i * (SceneLayout.gaugeWidth + SceneLayout.gaugeGap);
-    const w = SceneLayout.gaugeWidth;
-    b.modify(
-      x + 2,
-      r.y + 2,
-      w,
-      r.h,
-      b.toward(Palette.wallDark, 0.5),
-      checker: true,
-    );
-    b.shadeRect(
-      x,
-      r.y,
-      w,
-      r.h,
-      base: Palette.slateBase,
-      light: Palette.slateLight,
-      dark: Palette.slateDark,
-      rounded: true,
-    );
-    b.fill(x + 3, r.y + 6, w - 6, r.h - 9, Palette.screenOff);
-    final level = i < levels.length ? levels[i].clamp(0.0, 1.0) : 0.0;
-    final maxH = r.h - 11;
-    final lh = (maxH * level).round();
-    b.emissive(() {
-      if (lh > 0) {
-        b.fill(x + 4, r.bottom - 4 - lh, w - 8, lh, accents[i]);
-        b.hline(
-          x + 4,
-          r.bottom - 4 - lh,
-          w - 8,
-          PixelBuffer.lightOf(accents[i]),
-        );
-      }
-      b.fill(x + 3, r.y + 2, w - 6, 2, level > 0 ? accents[i] : accentDarks[i]);
-      b.set(x + 3, r.y + 2, PixelBuffer.lightOf(accents[i]));
-    });
-    b.vline(x + 3, r.y + 6, r.h - 9, Palette.screenGlint);
-    for (var t = 0; t < 4; t++) {
-      b.set(x + w - 4, r.y + 7 + t * 4, Palette.slateLight);
-    }
-  }
 }
 
 /// Framed poster: a tiny landscape in the office's own colours.
@@ -1072,7 +967,13 @@ void paintCoffeeMachine(PixelBuffer b, IRect m, int frame) {
     b.set(m.x + 4, m.y + 8, PixelBuffer.lightOf(Palette.red));
     b.fill(m.x + 7, m.y + 8, 2, 2, Palette.green);
   });
-  b.disc(m.right - 6, m.y + 9, 2, Palette.steelBase, outline: Palette.slateDark);
+  b.disc(
+    m.right - 6,
+    m.y + 9,
+    2,
+    Palette.steelBase,
+    outline: Palette.slateDark,
+  );
   b.set(m.right - 7, m.y + 8, Palette.steelLight);
   // Brew head and recess.
   b.fill(m.x + 3, m.y + 14, m.w - 6, m.h - 19, Palette.slateDark);

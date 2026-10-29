@@ -190,6 +190,7 @@ class OfficeSnapshot {
     this.lastReport,
     this.reports = const [],
     this.unreadReports = 0,
+    this.paused = false,
     this.statusLine = '',
   });
 
@@ -212,6 +213,9 @@ class OfficeSnapshot {
   /// How many of [reports] arrived since the mailbox was last opened; the
   /// mailbox flag is up while this is positive.
   final int unreadReports;
+
+  /// New prompts are being held back (tray "Duraklat").
+  final bool paused;
 
   /// One line for the bottom bar ("Claude is planning...", "Office asleep").
   final String statusLine;

@@ -1,7 +1,7 @@
 import '../state/seat_state.dart';
+import 'irect.dart';
 import 'palette.dart';
 import 'pixel.dart';
-import 'scene_layout.dart';
 
 /// What a monitor shows.
 enum ScreenMode { off, text, terminal, globe, flicker }
@@ -136,7 +136,13 @@ void _screen(
           }
         }
       }
-      b.disc(sx + sw ~/ 2, sy + sh ~/ 2, 3, Palette.paper, outline: Palette.alertDim);
+      b.disc(
+        sx + sw ~/ 2,
+        sy + sh ~/ 2,
+        3,
+        Palette.paper,
+        outline: Palette.alertDim,
+      );
       b.set(sx + sw ~/ 2, sy + sh ~/ 2 - 1, Palette.alertDim);
       b.set(sx + sw ~/ 2, sy + sh ~/ 2 + 1, Palette.alertDim);
   }

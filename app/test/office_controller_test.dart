@@ -243,6 +243,7 @@ class Harness {
 
 void main() {
   concurrentRootTests();
+  pauseTests();
   group('visualForEvent', () {
     test('maps every kind', () {
       SeatVisual? of(
@@ -814,6 +815,33 @@ void concurrentRootTests() {
       expect(reports.map((r) => r.title), ['Two', 'One']);
       expect(reports.map((r) => r.text), ['second', 'first']);
       expect(h.seat(Seat.gpt).xp, 20);
+    });
+  });
+}
+
+// -------------------------------------------------------------- pausing
+
+void pauseTests() {
+  group('OfficeController, pause', () {
+    test('held prompts start when the office resumes', () async {
+      final h = Harness({
+        Seat.gpt: ScriptedAdapter(Seat.gpt, [
+          [ScriptedTurn.success('done')],
+        ]),
+      });
+      await h.controller.setPaused(true);
+      expect(h.controller.paused, isTrue);
+      expect(h.controller.snapshot.paused, isTrue);
+      expect(h.controller.snapshot.statusLine, 'Ofis duraklatıldı');
+      await h.controller.submit('Later', directSeat: Seat.gpt, cwd: '/x');
+      expect(h.controller.snapshot.busy, isFalse);
+      expect(h.board.listNonTerminal(), isEmpty);
+      await h.controller.setPaused(false);
+      expect(h.controller.snapshot.paused, isFalse);
+      expect(h.controller.snapshot.busy, isTrue);
+      await h.waitIdle();
+      expect(h.controller.snapshot.reports.single.cwd, '/x');
+      expect(h.controller.snapshot.reports.single.text, 'done');
     });
   });
 }

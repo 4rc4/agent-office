@@ -51,6 +51,16 @@ class FakeOfficeModel extends ChangeNotifier implements OfficeModel {
   }
 
   int markReadCalls = 0;
+  bool pausedValue = false;
+
+  @override
+  bool get paused => pausedValue;
+
+  @override
+  Future<void> setPaused(bool value) async {
+    pausedValue = value;
+    notifyListeners();
+  }
 
   @override
   void markReportsRead() {

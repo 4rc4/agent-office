@@ -4,6 +4,7 @@ import '../l10n_tr.dart';
 import '../runtime/office_settings.dart';
 import '../state/office_model.dart';
 import '../widgets/office_theme.dart';
+import 'autostart.dart';
 import 'desktop_layer.dart';
 import 'desktop_stage.dart';
 
@@ -18,6 +19,8 @@ class DesktopApp extends StatelessWidget {
     required this.layer,
     required this.settings,
     this.onSettingsChanged,
+    this.commands,
+    this.autostart = const NoAutostart(),
     this.windowed = false,
     this.animate = true,
   });
@@ -26,6 +29,8 @@ class DesktopApp extends StatelessWidget {
   final DesktopLayer layer;
   final OfficeSettings settings;
   final ValueChanged<OfficeSettings>? onSettingsChanged;
+  final DesktopCommands? commands;
+  final Autostart autostart;
   final bool windowed;
   final bool animate;
 
@@ -44,6 +49,8 @@ class DesktopApp extends StatelessWidget {
         layer: layer,
         settings: settings,
         onSettingsChanged: onSettingsChanged,
+        commands: commands,
+        autostart: autostart,
         windowed: windowed,
         animate: animate,
       ),

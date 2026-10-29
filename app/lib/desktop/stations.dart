@@ -6,7 +6,7 @@ import '../scene/furniture.dart'
     show paintCoffeeMachine, paintKeyboard, paintStickyNote;
 import '../scene/palette.dart';
 import '../scene/pixel.dart';
-import '../scene/scene_layout.dart' show IRect;
+import '../scene/irect.dart';
 import '../scene/screens.dart';
 import '../state/seat_state.dart';
 

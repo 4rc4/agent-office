@@ -40,6 +40,22 @@ abstract final class Tr {
   static const String olderReports = 'Önceki raporlar';
   static const String reportFrom = 'Rapor';
 
+  // --- tray and settings --------------------------------------------------
+  static const String pause = 'Duraklat';
+  static const String resume = 'Devam';
+  static const String settings = 'Ayarlar';
+  static const String quit = 'Çıkış';
+  static const String officePaused = 'Ofis duraklatıldı';
+  static const String claudeExecutable = 'claude programı';
+  static const String codexExecutable = 'codex programı';
+  static const String find = 'Bul';
+  static const String permissionMode = 'İzin modu';
+  static const String fakeMode = 'Sahte mod (sahte çıktı)';
+  static const String startWithWindows = 'Windows ile başlat';
+  static const String save = 'Kaydet';
+  static const String settingsRestartNote =
+      'Program ve sahte mod ayarları yeniden başlatınca geçerli olur.';
+
   // --- prompt modes -------------------------------------------------------
   static const String modeOffice = 'Ofis (Claude planlar)';
   static const String modeClaudeOnly = 'Sadece Claude';

@@ -3,28 +3,28 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 
-import 'app.dart';
 import 'bootstrap.dart';
+import 'desktop/autostart.dart';
 import 'desktop/desktop_app.dart';
 import 'desktop/desktop_layer.dart';
+import 'desktop/desktop_stage.dart';
+import 'desktop/tray.dart';
 import 'runtime/office_runtime.dart';
 import 'runtime/office_settings.dart';
-import 'state/office_ticker.dart';
 import 'widgets/startup_error_screen.dart';
 
 /// Entry point.
 ///
-/// Default: the live office on the wallpaper layer, a transparent
-/// full-screen window the runner parks behind the desktop icons once the
-/// first frame is up (`DesktopLayer.enterWallpaperMode`). The office
-/// runtime starts from `settings.json` (as the room does; `--fake` replays
-/// canned vendor output), station positions and recent folders are saved
-/// back there. `--window` shows the same stage in a plain dark window,
-/// `--room` opens the old pixel-room window ([runRoom]).
+/// The live office on the wallpaper layer, a transparent full-screen window
+/// the runner parks behind the desktop icons once the first frame is up
+/// (`DesktopLayer.enterWallpaperMode`). The office runtime starts from
+/// `settings.json` (`--fake` replays canned vendor output) and resumes
+/// interrupted work; station positions, recent folders and the settings
+/// sheet are saved back there. A tray icon pauses the office, opens the
+/// settings and quits; quitting stops the agents first. `--window` shows
+/// the same stage in a plain dark window.
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (args.contains(Bootstrap.roomFlag)) return runRoom(args);
-
   final windowed = args.contains(Bootstrap.windowFlag);
   final stored = await Bootstrap.loadSettingsOrDefaults();
   final settings = Bootstrap.applyFakeMode(
@@ -38,19 +38,37 @@ Future<void> main(List<String> args) async {
     runApp(StartupErrorScreen(settings: settings, error: error));
     return;
   }
-  WidgetsBinding.instance.addObserver(
-    OfficeLifecycleObserver(closeRuntime: runtime.close),
-  );
-
+  final controller = runtime.controller;
   final layer = DesktopLayer();
+  final commands = DesktopCommands();
+  final tray = OfficeTray(
+    onTogglePause: () => unawaited(controller.setPaused(!controller.paused)),
+    onSettings: commands.openSettings,
+    onQuit: () => unawaited(layer.quit()),
+  );
+  Future<void> shutDown() async {
+    await tray.dispose();
+    await controller.stopAll();
+    await runtime.close();
+  }
+
+  WidgetsBinding.instance.addObserver(
+    OfficeLifecycleObserver(closeRuntime: shutDown),
+  );
   runApp(
     DesktopApp(
-      model: runtime.controller,
+      model: controller,
       layer: layer,
       settings: stored,
       onSettingsChanged: (next) => unawaited(_save(next)),
+      commands: commands,
+      autostart: SystemAutostart(),
       windowed: windowed,
     ),
+  );
+  unawaited(tray.install(paused: controller.paused));
+  controller.addListener(
+    () => unawaited(tray.setPaused(controller.snapshot.paused)),
   );
   if (windowed) return;
   WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -69,35 +87,4 @@ Future<void> _save(OfficeSettings settings) async {
   } on Object catch (error) {
     debugPrint('settings: save failed: $error');
   }
-}
-
-/// The pixel-room window: loads `settings.json` from the app support folder
-/// (defaults with the current folder as `cwd` when that fails), starts the
-/// office runtime, binds the animation clock to the window lifecycle and
-/// shows the office. `--fake` (or `AGENT_OFFICE_FAKE=1`) replays canned
-/// vendor output so the window can be demoed without `claude` or `codex`
-/// installed. When the runtime cannot start, the window explains why
-/// instead of crashing.
-Future<void> runRoom(List<String> args) async {
-  final settings = Bootstrap.applyFakeMode(
-    await Bootstrap.loadSettingsOrDefaults(),
-    fake: Bootstrap.wantsFakeMode(args, Platform.environment),
-  );
-  final OfficeRuntime runtime;
-  try {
-    runtime = await OfficeRuntime.start(settings);
-  } on Object catch (error) {
-    runApp(StartupErrorScreen(settings: settings, error: error));
-    return;
-  }
-  final ticker = OfficeTicker(runtime.controller);
-  Future<void> shutDown() async {
-    ticker.dispose();
-    await runtime.close();
-  }
-
-  WidgetsBinding.instance.addObserver(
-    OfficeLifecycleObserver(ticker: ticker, closeRuntime: shutDown),
-  );
-  runApp(AgentOfficeApp(model: runtime.controller, tick: ticker.tick));
 }

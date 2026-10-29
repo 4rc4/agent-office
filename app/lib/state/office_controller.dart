@@ -100,6 +100,14 @@ String _shortLine(String text, {required String fallback, int max = 60}) {
 
 enum _Outcome { none, done, failed }
 
+class _HeldPrompt {
+  const _HeldPrompt(this.prompt, this.directSeat, this.cwd);
+
+  final String prompt;
+  final Seat? directSeat;
+  final String cwd;
+}
+
 class _PendingIdle {
   _PendingIdle(this.deadline, this.timer);
 
@@ -173,6 +181,8 @@ class OfficeController extends OfficeModel {
   String? _lastReport;
   final List<OfficeReport> _reports = [];
   int _unreadReports = 0;
+  bool _paused = false;
+  final List<_HeldPrompt> _held = [];
   String? _errorLine;
   _Outcome _lastOutcome = _Outcome.none;
   Seat? _selectedSeat;
@@ -223,9 +233,14 @@ class OfficeController extends OfficeModel {
   @override
   Future<void> submit(String prompt, {Seat? directSeat, String? cwd}) async {
     if (_disposed) throw StateError('office controller is disposed');
+    final folder = cwd ?? _cwd;
+    if (_paused) {
+      _held.add(_HeldPrompt(prompt, directSeat, folder));
+      _flush(force: true);
+      return;
+    }
     _errorLine = null;
     _lastOutcome = _Outcome.none;
-    final folder = cwd ?? _cwd;
     final seat = directSeat ?? supervisor.brainSeat;
     final Future<TaskRecord> run;
     try {
@@ -269,6 +284,25 @@ class OfficeController extends OfficeModel {
       await hook();
     } on Object catch (error) {
       _errorLine = 'Durdurma hatası: ${_shortLine('$error', fallback: '?')}';
+    }
+    _flush(force: true);
+  }
+
+  @override
+  bool get paused => _paused;
+
+  /// While paused, [submit] holds prompts instead of starting them; resuming
+  /// submits the held ones in order. Running work is not interrupted.
+  @override
+  Future<void> setPaused(bool value) async {
+    if (value == _paused || _disposed) return;
+    _paused = value;
+    if (!value) {
+      final held = List.of(_held);
+      _held.clear();
+      for (final h in held) {
+        await submit(h.prompt, directSeat: h.directSeat, cwd: h.cwd);
+      }
     }
     _flush(force: true);
   }
@@ -453,6 +487,7 @@ class OfficeController extends OfficeModel {
     lastReport: _lastReport,
     reports: List.unmodifiable(_reports),
     unreadReports: _unreadReports,
+    paused: _paused,
     statusLine: _errorLine ?? 'Ofis durduruldu.',
   );
 
@@ -482,11 +517,13 @@ class OfficeController extends OfficeModel {
       lastReport: _lastReport,
       reports: List.unmodifiable(_reports),
       unreadReports: _unreadReports,
+      paused: _paused,
       statusLine: _statusLine(open, seats),
     );
   }
 
   String _statusLine(List<TaskRecord> open, List<SeatSnapshot> seats) {
+    if (_paused) return 'Ofis duraklatıldı';
     if (seats.any((s) => s.visual == SeatVisual.waitingUser)) {
       return 'Onay bekleniyor';
     }

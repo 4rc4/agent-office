@@ -22,9 +22,6 @@ abstract final class Bootstrap {
   /// instead of the wallpaper layer (no WorkerW trick; for testing).
   static const String windowFlag = '--window';
 
-  /// Process argument that opens the old pixel-room window (`OfficeScreen`).
-  static const String roomFlag = '--room';
-
   /// The file office_core's fake runner needs; its presence marks a fixtures
   /// folder.
   static const String fixturesMarker = 'claude_brain_plan.jsonl';
