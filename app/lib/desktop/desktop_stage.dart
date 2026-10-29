@@ -22,6 +22,7 @@ import 'office_actors.dart';
 import 'prompt_bubble.dart';
 import 'settings_bubble.dart';
 import 'stations.dart';
+import 'task_bubble.dart';
 import 'tv_bubble.dart';
 import 'wallpaper.dart';
 
@@ -44,12 +45,15 @@ class DesktopCommands extends ChangeNotifier {
 }
 
 /// Which bubble is open.
-enum _BubbleKind { prompt, status, whiteboard, mailbox, settings, tv }
+enum _BubbleKind { prompt, status, whiteboard, mailbox, settings, tv, task }
 
 class _OpenBubble {
-  const _OpenBubble(this.kind, {this.seat, this.station});
+  const _OpenBubble(this.kind, {this.seat, this.station, this.taskId});
 
   final _BubbleKind kind;
+
+  /// The task a [_BubbleKind.task] bubble shows.
+  final String? taskId;
   final Seat? seat;
   final StationKind? station;
 }
@@ -97,6 +101,9 @@ class DesktopStage extends StatefulWidget {
 
   /// Device pixels per sprite pixel.
   static const int scale = 4;
+
+  /// Context fill from which a character sweats.
+  static const double sweatAt = 0.8;
 
   /// Clock period while something moves.
   static const Duration tickPeriod = Duration(milliseconds: 100);
@@ -571,6 +578,7 @@ class _DesktopStageState extends State<DesktopStage> {
                 devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
                 hovered: _hovered,
                 lifted: _dragging,
+                sweating: sweating(snapshot),
                 windowed: widget.windowed,
               ),
             ),
@@ -620,6 +628,50 @@ class _DesktopStageState extends State<DesktopStage> {
 
   /// The open bubble above its anchor, horizontally centred on it but kept
   /// inside the screen, its pointer aimed at the anchor.
+  /// The task bubble, or the whiteboard again when the task left the
+  /// board.
+  Widget _taskBubble(OfficeSnapshot snapshot, String taskId, double pointerX) {
+    final task = snapshot.task(taskId);
+    if (task == null) {
+      return WhiteboardBubble(
+        key: _bubbleKey,
+        tasks: snapshot.tasks,
+        pointerX: pointerX,
+        onClose: _closeBubble,
+      );
+    }
+    return TaskBubble(
+      key: _bubbleKey,
+      task: task,
+      events: snapshot.eventsFor(taskId),
+      pointerX: pointerX,
+      onBack: () => _open(
+        const _OpenBubble(
+          _BubbleKind.whiteboard,
+          station: StationKind.whiteboard,
+        ),
+      ),
+      onStop: () {
+        unawaited(widget.model.stopTask(taskId));
+        _closeBubble();
+      },
+      onSteer: (note) {
+        unawaited(widget.model.steerTask(taskId, note));
+        _closeBubble();
+      },
+      onClose: _closeBubble,
+    );
+  }
+
+  /// Seats whose current task's context is at least [DesktopStage.sweatAt].
+  static Set<Seat> sweating(OfficeSnapshot snapshot) => {
+    for (final seat in snapshot.seats)
+      if (seat.currentTaskId != null &&
+          (snapshot.task(seat.currentTaskId!)?.contextPct ?? 0) >=
+              DesktopStage.sweatAt)
+        seat.seat,
+  };
+
   Widget _bubbleWidget(
     Size size,
     _OpenBubble bubble,
@@ -681,7 +733,15 @@ class _DesktopStageState extends State<DesktopStage> {
         tasks: snapshot.tasks,
         pointerX: pointerX,
         onClose: _closeBubble,
+        onTaskTap: (task) => _open(
+          _OpenBubble(
+            _BubbleKind.task,
+            station: StationKind.whiteboard,
+            taskId: task.id,
+          ),
+        ),
       ),
+      _BubbleKind.task => _taskBubble(snapshot, bubble.taskId!, pointerX),
       _BubbleKind.mailbox => MailboxBubble(
         key: _bubbleKey,
         reports: snapshot.reports,

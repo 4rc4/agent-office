@@ -92,4 +92,19 @@ class FakeOfficeModel extends ChangeNotifier implements OfficeModel {
   Future<void> stopAll() async {
     stopCalls++;
   }
+
+  final stopped = <String>[];
+  final steered = <(String, String)>[];
+
+  @override
+  Future<bool> stopTask(String taskId) async {
+    stopped.add(taskId);
+    return true;
+  }
+
+  @override
+  Future<bool> steerTask(String taskId, String note) async {
+    steered.add((taskId, note));
+    return true;
+  }
 }

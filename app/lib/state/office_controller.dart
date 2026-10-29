@@ -172,6 +172,12 @@ class OfficeController extends OfficeModel {
   final Map<Seat, _PendingIdle> _pendingIdle = {};
   final List<AgentEvent> _recentEvents = [];
 
+  /// Context window per seat as last reported (model name or modelUsage).
+  final Map<Seat, int> _windows = {};
+
+  /// Last request size and window per task id.
+  final Map<String, (int, int)> _context = {};
+
   /// Every task record seen through `board.changes`, by id. The board has no
   /// "recent terminal" query, so finished tasks come from here.
   final Map<String, TaskRecord> _seen = {};
@@ -396,7 +402,56 @@ class OfficeController extends OfficeModel {
     );
     if (next == SeatVisual.celebrating) _scheduleIdle(seat);
     if (event.kind == AgentEventKind.rateLimit) _recordUsage(event);
+    _trackContext(event);
     _markDirty();
+  }
+
+  /// Default context window of a seat's CLI: Claude 200k (a million for a
+  /// `[1m]` model), Codex 400k.
+  static int defaultWindow(Seat seat, {String? model}) {
+    if (model != null && model.contains('[1m]')) return 1000000;
+    return seat == Seat.gpt ? 400000 : 200000;
+  }
+
+  /// Keeps [_windows] and [_context] current: a session start names the
+  /// model, a `modelUsage` map carries the exact window, and every event
+  /// with input tokens is the size of the session's latest request.
+  void _trackContext(AgentEvent event) {
+    final seat = event.seat;
+    if (event.kind == AgentEventKind.sessionStarted) {
+      final model = event.raw['model'];
+      _windows[seat] = defaultWindow(
+        seat,
+        model: model is String ? model : null,
+      );
+    }
+    final usage = event.raw['modelUsage'];
+    if (usage is Map) {
+      var widest = 0;
+      for (final value in usage.values) {
+        if (value is Map && value['contextWindow'] is num) {
+          final window = (value['contextWindow'] as num).toInt();
+          if (window > widest) widest = window;
+        }
+      }
+      if (widest > 0) _windows[seat] = widest;
+    }
+    final taskId = event.taskId;
+    final tokens = event.inputTokens;
+    if (taskId == null || tokens == null) return;
+    _context[taskId] = (tokens, _windows[seat] ?? defaultWindow(seat));
+  }
+
+  @override
+  Future<bool> stopTask(String taskId) async {
+    if (_disposed || _stopped) return false;
+    return supervisor.stopTask(taskId);
+  }
+
+  @override
+  Future<bool> steerTask(String taskId, String note) async {
+    if (_disposed || _stopped) return false;
+    return supervisor.steerTask(taskId, note);
   }
 
   /// Stores a `rate_limit_event`'s window, utilization and reset time on
@@ -555,9 +610,9 @@ class OfficeController extends OfficeModel {
     return OfficeSnapshot(
       seats: seats,
       tasks: [
-        for (final task in open) TaskSnapshot.fromRecord(task),
+        for (final task in open) _taskSnapshot(task),
         for (final task in finished.take(maxRecentTerminal))
-          TaskSnapshot.fromRecord(task),
+          _taskSnapshot(task),
       ],
       recentEvents: List.unmodifiable(_recentEvents),
       busy: _hasOpenRoot(open),
@@ -568,6 +623,13 @@ class OfficeController extends OfficeModel {
       statusLine: _statusLine(open, seats),
       usage: [for (final seat in Seat.values) ...board.usageFor(seat)],
     );
+  }
+
+  TaskSnapshot _taskSnapshot(TaskRecord task) {
+    final snapshot = TaskSnapshot.fromRecord(task);
+    final context = _context[task.id];
+    if (context == null) return snapshot;
+    return snapshot.withContext(used: context.$1, window: context.$2);
   }
 
   String _statusLine(List<TaskRecord> open, List<SeatSnapshot> seats) {

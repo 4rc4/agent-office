@@ -26,6 +26,7 @@ class WorldPainter extends CustomPainter {
     this.devicePixelRatio = 1,
     this.hovered,
     this.lifted,
+    this.sweating = const {},
     this.windowed = false,
   });
 
@@ -51,6 +52,9 @@ class WorldPainter extends CustomPainter {
 
   /// Station being dragged: drawn one sprite row higher.
   final StationKind? lifted;
+
+  /// Seats whose context is nearly full: a sweat drop by the head.
+  final Set<Seat> sweating;
   final bool windowed;
 
   @override
@@ -92,7 +96,15 @@ class WorldPainter extends CustomPainter {
       final bob = hovered == actor.seat && !actor.walking && tick.isEven
           ? -1
           : 0;
-      drawActor(b, actor, col(actor.x), floor, frame, bob: bob);
+      drawActor(
+        b,
+        actor,
+        col(actor.x),
+        floor,
+        frame,
+        bob: bob,
+        sweating: sweating.contains(actor.seat),
+      );
     }
     for (final kind in const [StationKind.deskClaude, StationKind.deskGpt]) {
       final cx = col(layout.centerX(kind));

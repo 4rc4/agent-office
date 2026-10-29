@@ -94,11 +94,17 @@ class WhiteboardBubble extends StatelessWidget {
     super.key,
     required this.tasks,
     required this.onClose,
+    this.onTaskTap,
     this.pointerX = 0.5,
   });
 
+  static Key taskKey(String id) => Key('whiteboard.task.$id');
+
   final List<TaskSnapshot> tasks;
   final VoidCallback onClose;
+
+  /// A note was tapped: the stage opens the task bubble.
+  final ValueChanged<TaskSnapshot>? onTaskTap;
   final double pointerX;
 
   @override
@@ -134,23 +140,32 @@ class WhiteboardBubble extends StatelessWidget {
     );
   }
 
+  Widget _tappable(TaskSnapshot task, Widget child) => InkWell(
+    key: WhiteboardBubble.taskKey(task.id),
+    onTap: onTaskTap == null ? null : () => onTaskTap!(task),
+    child: child,
+  );
+
   Widget _rootLine(TaskSnapshot root) {
     final folder = root.cwd.isEmpty ? '' : ' · ${folderName(root.cwd)}';
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _statusDot(root.status),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            '${root.title}$folder',
-            style: PixelText.bodyStrong,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+    return _tappable(
+      root,
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _statusDot(root.status),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '${root.title}$folder',
+              style: PixelText.bodyStrong,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-        ),
-        Text(Tr.statusLabel(root.status), style: PixelText.faint),
-      ],
+          Text(Tr.statusLabel(root.status), style: PixelText.faint),
+        ],
+      ),
     );
   }
 
@@ -158,22 +173,25 @@ class WhiteboardBubble extends StatelessWidget {
     final who = task.assignee == null
         ? ''
         : ' · ${Tr.seatName(task.assignee!)}';
-    return Padding(
-      padding: const EdgeInsets.only(left: 14, top: 2),
-      child: Row(
-        children: [
-          _statusDot(task.status),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              task.title,
-              style: PixelText.body,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+    return _tappable(
+      task,
+      Padding(
+        padding: const EdgeInsets.only(left: 14, top: 2),
+        child: Row(
+          children: [
+            _statusDot(task.status),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                task.title,
+                style: PixelText.body,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
-          Text('${Tr.statusLabel(task.status)}$who', style: PixelText.faint),
-        ],
+            Text('${Tr.statusLabel(task.status)}$who', style: PixelText.faint),
+          ],
+        ),
       ),
     );
   }

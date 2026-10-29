@@ -6,6 +6,7 @@ import 'package:agent_office_app/desktop/info_bubbles.dart';
 import 'package:agent_office_app/desktop/prompt_bubble.dart';
 import 'package:agent_office_app/desktop/settings_bubble.dart';
 import 'package:agent_office_app/desktop/stations.dart';
+import 'package:agent_office_app/desktop/task_bubble.dart';
 import 'package:agent_office_app/desktop/tv_bubble.dart';
 import 'package:agent_office_app/runtime/office_settings.dart';
 import 'package:agent_office_app/state/seat_state.dart';
@@ -141,6 +142,63 @@ void main() {
       expect(find.text('Bitti · Claude'), findsOneWidget);
       await tapStation(tester, StationKind.whiteboard);
       expect(find.byType(WhiteboardBubble), findsNothing);
+    });
+
+    testWidgets('a whiteboard note opens the task bubble with context', (
+      tester,
+    ) async {
+      final snapshot = workingSnapshot();
+      final model = FakeOfficeModel(
+        snapshot: OfficeSnapshot(
+          seats: snapshot.seats,
+          tasks: [
+            for (final t in snapshot.tasks)
+              t.id == 's1' ? t.withContext(used: 74000, window: 200000) : t,
+          ],
+          recentEvents: [
+            AgentEvent(
+              seat: Seat.gpt,
+              taskId: 's1',
+              kind: AgentEventKind.toolStarted,
+              summary: 'Bash: flutter test',
+            ),
+          ],
+          busy: true,
+        ),
+      );
+      await pumpDesktop(tester, model);
+      await tapStation(tester, StationKind.whiteboard);
+      await tester.tap(find.byKey(WhiteboardBubble.taskKey('s1')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(TaskBubble), findsOneWidget);
+      expect(find.text('Widget testini düzelt'), findsOneWidget);
+      expect(find.textContaining('%37'), findsOneWidget);
+      expect(find.text('Bash: flutter test'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(TaskBubble.steerFieldKey),
+        'pnpm kullan',
+      );
+      await tester.tap(find.byKey(TaskBubble.steerKey));
+      await tester.pump();
+      expect(model.steered, [('s1', 'pnpm kullan')]);
+      expect(find.byType(TaskBubble), findsNothing);
+    });
+
+    testWidgets('Durdur in the task bubble stops only that task', (
+      tester,
+    ) async {
+      final model = FakeOfficeModel(snapshot: workingSnapshot());
+      await pumpDesktop(tester, model);
+      await tapStation(tester, StationKind.whiteboard);
+      await tester.tap(find.byKey(WhiteboardBubble.taskKey('s1')));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.byKey(TaskBubble.stopKey));
+      await tester.pump();
+      expect(model.stopped, ['s1']);
+      expect(model.stopCalls, 0);
     });
 
     testWidgets('the mailbox shows the letter, marks it read and copies', (

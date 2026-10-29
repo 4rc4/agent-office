@@ -24,6 +24,7 @@ void drawActor(
   int floor,
   int frame, {
   int bob = 0,
+  bool sweating = false,
 }) {
   final x = cx - spriteWidth ~/ 2;
   final y = floor - spriteHeight;
@@ -42,6 +43,9 @@ void drawActor(
   final dy = pose.dy + bob;
   b.sprite(x, y + dy - spriteEarRows, rows, characterLegend(palette));
   if (!actor.walking) _drawMoodProp(b, actor, x, y + dy, frame);
+  if (sweating && actor.mood != ActorMood.fail) {
+    drawSweat(b, x + 19, y + dy + 3, frame);
+  }
 }
 
 /// Where typing hands go when the actor works at a desk: the painter draws

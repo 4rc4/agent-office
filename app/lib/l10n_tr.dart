@@ -40,6 +40,12 @@ abstract final class Tr {
   static const String olderReports = 'Önceki raporlar';
   static const String reportFrom = 'Rapor';
   static const String tv = 'Televizyon';
+  static const String taskDetails = 'Görev';
+  static const String steer = 'Yönlendir';
+  static const String steerHint = 'Yeni talimat… (oturum devam eder)';
+  static const String steerGptHint = 'Yeni talimat… (GPT baştan alır)';
+  static const String contextLabel = 'Bağlam';
+  static const String back = 'Tahta';
   static const String usageLimits = 'Kullanım limitleri';
   static const String noUsage =
       'Henüz limit bilgisi yok; Claude çalışınca gelir.';

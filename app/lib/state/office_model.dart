@@ -43,4 +43,11 @@ abstract class OfficeModel extends ChangeNotifier {
 
   /// Stops every running agent politely (close stdin, then kill).
   Future<void> stopAll();
+
+  /// Ends one task for good (no retry). False when it is unknown or done.
+  Future<bool> stopTask(String taskId) async => false;
+
+  /// Hands [note] to one task: its session continues with it (a Codex
+  /// task restarts with the note). False when unknown or done.
+  Future<bool> steerTask(String taskId, String note) async => false;
 }

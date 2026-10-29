@@ -631,6 +631,68 @@ void main() {
       expect(h.board.usageFor(Seat.gpt), hasLength(1));
     });
 
+    test('context fill follows the last input tokens and the window', () async {
+      final h = Harness({
+        Seat.gpt: ScriptedAdapter(Seat.gpt, [
+          [
+            ScriptedTurn.success('ok', [
+              ev(Seat.gpt, AgentEventKind.toolFinished, inputTokens: 100000),
+              ev(
+                Seat.gpt,
+                AgentEventKind.sessionStarted,
+                raw: {'model': 'claude-opus-5[1m]'},
+              ),
+              ev(Seat.gpt, AgentEventKind.toolFinished, inputTokens: 300000),
+            ]),
+          ],
+        ]),
+      });
+      final seen = <double?>[];
+      h.controller.addListener(() {
+        final worker = h.controller.snapshot.tasks
+            .where((t) => !t.isRoot)
+            .firstOrNull;
+        seen.add(worker?.contextPct);
+      });
+      await h.controller.submit('slow', directSeat: Seat.gpt);
+      await h.waitIdle();
+      // Codex seats default to a 400k window: 100k is 25 %; the [1m] model
+      // name widens it to a million, so 300k is 30 %.
+      expect(seen, contains(closeTo(0.25, 0.001)));
+      expect(seen, contains(closeTo(0.3, 0.001)));
+    });
+
+    test('a modelUsage context window overrides the default', () async {
+      final h = Harness({
+        Seat.gpt: ScriptedAdapter(Seat.gpt, [
+          [
+            ScriptedTurn.success('ok', [
+              ev(
+                Seat.gpt,
+                AgentEventKind.toolFinished,
+                inputTokens: 50000,
+                raw: {
+                  'modelUsage': {
+                    'gpt-x': {'contextWindow': 100000},
+                  },
+                },
+              ),
+            ]),
+          ],
+        ]),
+      });
+      final seen = <double?>[];
+      h.controller.addListener(() {
+        final worker = h.controller.snapshot.tasks
+            .where((t) => !t.isRoot)
+            .firstOrNull;
+        seen.add(worker?.contextPct);
+      });
+      await h.controller.submit('slow', directSeat: Seat.gpt);
+      await h.waitIdle();
+      expect(seen, contains(closeTo(0.5, 0.001)));
+    });
+
     test('planned run: planning, worker, merge, report', () async {
       Future<PlanOrError> onePlan(String text) async => PlanOrError.plan(
         ParsedPlan(

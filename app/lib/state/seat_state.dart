@@ -131,6 +131,8 @@ class TaskSnapshot {
     this.attempt = 0,
     this.resultSummary,
     this.cwd = '',
+    this.contextUsed = 0,
+    this.contextWindow = 0,
   });
 
   factory TaskSnapshot.fromRecord(TaskRecord record) => TaskSnapshot(
@@ -156,6 +158,30 @@ class TaskSnapshot {
 
   /// Folder the task's root works in; empty when unknown.
   final String cwd;
+
+  /// Tokens the session's last request carried (its whole prompt) and the
+  /// model's context window; 0 when unknown.
+  final int contextUsed;
+  final int contextWindow;
+
+  /// How full the context is (0..1+), or null without a known window.
+  double? get contextPct =>
+      contextWindow > 0 ? contextUsed / contextWindow : null;
+
+  TaskSnapshot withContext({required int used, required int window}) =>
+      TaskSnapshot(
+        id: id,
+        rootId: rootId,
+        title: title,
+        status: status,
+        isRoot: isRoot,
+        assignee: assignee,
+        attempt: attempt,
+        resultSummary: resultSummary,
+        cwd: cwd,
+        contextUsed: used,
+        contextWindow: window,
+      );
 }
 
 /// One finished root's report, as the mailbox keeps it.
@@ -226,6 +252,15 @@ class OfficeSnapshot {
   final List<UsageSnapshot> usage;
 
   SeatSnapshot seat(Seat seat) => seats.firstWhere((s) => s.seat == seat);
+
+  /// The task with [id], if the board still shows it.
+  TaskSnapshot? task(String id) => tasks.where((t) => t.id == id).firstOrNull;
+
+  /// [recentEvents] of one task, oldest first.
+  List<AgentEvent> eventsFor(String taskId) => [
+    for (final e in recentEvents)
+      if (e.taskId == taskId) e,
+  ];
 
   bool get anyAnimated => seats.any((s) => s.isAnimated);
 
