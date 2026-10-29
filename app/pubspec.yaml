@@ -13,6 +13,7 @@ dependencies:
     path: ../packages/office_core
   path: ^1.9.1
   path_provider: ^2.1.6
+  file_selector: ^1.0.3
   sqlite3_flutter_libs: 0.5.41
 
 dev_dependencies:

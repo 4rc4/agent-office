@@ -23,6 +23,15 @@ Future<bool> loadSdkFonts() async {
   return roboto || icons;
 }
 
+/// Loads the bundled pixel face (`assets/fonts`, family `PixelFont`) from
+/// the asset bundle, so pixel titles and buttons measure as in the app
+/// instead of as the test font's wide boxes.
+Future<void> loadPixelFont() async {
+  final loader = FontLoader('PixelFont')
+    ..addFont(rootBundle.load('assets/fonts/VT323-Regular.ttf'));
+  await loader.load();
+}
+
 /// `bin/cache/artifacts/material_fonts` of the SDK running this test, looked
 /// up from `FLUTTER_ROOT`, from the test shell path
 /// (`bin/cache/artifacts/engine/<platform>/flutter_tester`) and from the Dart

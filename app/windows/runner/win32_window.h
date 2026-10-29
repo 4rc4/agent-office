@@ -36,6 +36,15 @@ class Win32Window {
   // |Show| is called. Returns true if the window was created successfully.
   bool Create(const std::wstring& title, const Point& origin, const Size& size);
 
+  // Creates a borderless popup covering the primary monitor and hidden from
+  // the taskbar: the desktop layer of wallpaper mode. The window is invisible
+  // until |Show| is called, which then shows it without activating it.
+  // Returns true if the window was created successfully.
+  bool CreateLayer(const std::wstring& title);
+
+  // Whether the window was created by |CreateLayer|.
+  bool IsLayer() const { return layer_; }
+
   // Show the current window. Returns true if the window was successfully shown.
   bool Show();
 
@@ -91,6 +100,9 @@ class Win32Window {
   static void UpdateTheme(HWND const window);
 
   bool quit_on_close_ = false;
+
+  // True for a window created by |CreateLayer|.
+  bool layer_ = false;
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

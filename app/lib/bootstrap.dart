@@ -18,6 +18,13 @@ abstract final class Bootstrap {
   /// Environment variable that does the same (`1`, `true`, `yes` or `on`).
   static const String fakeEnv = 'AGENT_OFFICE_FAKE';
 
+  /// Process argument that shows the desktop stage in a plain dark window
+  /// instead of the wallpaper layer (no WorkerW trick; for testing).
+  static const String windowFlag = '--window';
+
+  /// Process argument that opens the old pixel-room window (`OfficeScreen`).
+  static const String roomFlag = '--room';
+
   /// The file office_core's fake runner needs; its presence marks a fixtures
   /// folder.
   static const String fixturesMarker = 'claude_brain_plan.jsonl';

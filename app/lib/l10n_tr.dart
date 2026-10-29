@@ -27,6 +27,13 @@ abstract final class Tr {
   static const String startupHint =
       'Ayarları veya komut satırını düzeltip pencereyi yeniden açın.';
 
+  // --- desktop layer ------------------------------------------------------
+  static const String whatShallWeDo = 'Ne yapalım?';
+  static const String desktopPromptHint = 'Bir iş yaz… (Enter gönderir)';
+  static const String noFolder = 'Klasör seçilmedi';
+  static const String chooseFolder = 'Klasörü seç';
+  static const String sentLabel = 'Gönderildi';
+
   // --- prompt modes -------------------------------------------------------
   static const String modeOffice = 'Ofis (Claude planlar)';
   static const String modeClaudeOnly = 'Sadece Claude';

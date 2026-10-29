@@ -149,8 +149,28 @@ bool Win32Window::Create(const std::wstring& title,
   return OnCreate();
 }
 
+bool Win32Window::CreateLayer(const std::wstring& title) {
+  Destroy();
+
+  const wchar_t* window_class =
+      WindowClassRegistrar::GetInstance()->GetWindowClass();
+
+  HWND window = CreateWindowEx(
+      WS_EX_TOOLWINDOW, window_class, title.c_str(), WS_POPUP, 0, 0,
+      GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), nullptr,
+      nullptr, GetModuleHandle(nullptr), this);
+
+  if (!window) {
+    return false;
+  }
+
+  layer_ = true;
+  return OnCreate();
+}
+
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  return ShowWindow(window_handle_,
+                    layer_ ? SW_SHOWNOACTIVATE : SW_SHOWNORMAL);
 }
 
 // static
