@@ -31,6 +31,8 @@ class ClaudeAdapter implements SeatAdapter {
     this.systemPromptFile,
     this.mcpConfigFile,
     this.maxTurns,
+    this.model = '',
+    this.effort = '',
     this.baseEnvironment = const {},
     String Function()? sessionIdFactory,
   }) : _runner = runner,
@@ -66,6 +68,14 @@ class ClaudeAdapter implements SeatAdapter {
   /// Value for `--max-turns`, if any.
   final int? maxTurns;
 
+  /// Default `--model` (empty: the CLI's own default). A task's
+  /// `options['model']` overrides it.
+  final String model;
+
+  /// Default `--effort` (empty: none). A task's `options['effort']`
+  /// overrides it.
+  final String effort;
+
   /// Environment the child starts from, before scrubbing.
   final Map<String, String> baseEnvironment;
 
@@ -84,10 +94,16 @@ class ClaudeAdapter implements SeatAdapter {
   /// The exact argument list for one start. A new session gets
   /// `--session-id [sessionId]` (generated when null), a resume gets
   /// `--resume [resumeRef]`.
-  List<String> buildArguments({String? resumeRef, String? sessionId}) {
+  List<String> buildArguments({
+    String? resumeRef,
+    String? sessionId,
+    Map<String, String> options = const {},
+  }) {
     final systemPrompt = systemPromptFile;
     final mcpConfig = mcpConfigFile;
     final turns = maxTurns;
+    final chosenModel = pickOption(options['model'], model);
+    final chosenEffort = pickOption(options['effort'], effort);
     return [
       '-p',
       '--output-format',
@@ -109,6 +125,8 @@ class ClaudeAdapter implements SeatAdapter {
       ],
       if (mcpConfig != null) ...['--mcp-config', mcpConfig],
       if (turns != null) ...['--max-turns', '$turns'],
+      if (chosenModel.isNotEmpty) ...['--model', chosenModel],
+      if (chosenEffort.isNotEmpty) ...['--effort', chosenEffort],
     ];
   }
 
@@ -133,6 +151,7 @@ class ClaudeAdapter implements SeatAdapter {
     final arguments = buildArguments(
       resumeRef: resumeRef,
       sessionId: sessionId,
+      options: task.options,
     );
     final environment = buildEnvironment(resuming: resumeRef != null);
     _lastArguments = arguments;

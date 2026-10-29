@@ -32,6 +32,8 @@ class CodexAdapter implements SeatAdapter {
     this.skipGitRepoCheck = true,
     this.outputDirectory,
     this.resumeFlagsAfterSubcommand = true,
+    this.model = '',
+    this.reasoningEffort = '',
     Map<String, String>? baseEnvironment,
   }) : _runner = runner,
        _baseEnvironment = baseEnvironment;
@@ -65,6 +67,14 @@ class CodexAdapter implements SeatAdapter {
   /// the documented form) or before `resume` (false).
   final bool resumeFlagsAfterSubcommand;
 
+  /// Default `-m` model (empty: the CLI's own). `options['model']` of a
+  /// task overrides it.
+  final String model;
+
+  /// Default `model_reasoning_effort` config override (empty: none).
+  /// `options['effort']` of a task overrides it.
+  final String reasoningEffort;
+
   List<String> _lastArguments = const [];
   Map<String, String> _lastEnvironment = const {};
 
@@ -90,8 +100,11 @@ class CodexAdapter implements SeatAdapter {
     required String cwd,
     required String taskId,
     String? resumeRef,
+    Map<String, String> options = const {},
   }) {
     final outputFile = outputFileFor(taskId);
+    final chosenModel = pickOption(options['model'], model);
+    final chosenEffort = pickOption(options['effort'], reasoningEffort);
     final flags = [
       '--json',
       if (resumeRef == null) ...['-C', cwd],
@@ -99,6 +112,11 @@ class CodexAdapter implements SeatAdapter {
       sandbox,
       if (skipGitRepoCheck) '--skip-git-repo-check',
       if (outputFile != null) ...['-o', outputFile],
+      if (chosenModel.isNotEmpty) ...['-m', chosenModel],
+      if (chosenEffort.isNotEmpty) ...[
+        '-c',
+        'model_reasoning_effort="$chosenEffort"',
+      ],
     ];
     if (resumeRef == null) return ['exec', ...flags, prompt];
     if (resumeFlagsAfterSubcommand) {
@@ -135,6 +153,7 @@ class CodexAdapter implements SeatAdapter {
       cwd: task.cwd,
       taskId: task.id,
       resumeRef: resumeRef,
+      options: task.options,
     );
     final environment = buildEnvironment();
     _lastArguments = arguments;

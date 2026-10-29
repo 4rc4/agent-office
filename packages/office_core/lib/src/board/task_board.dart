@@ -137,15 +137,19 @@ class TaskBoard {
   // ---------------------------------------------------------------- tasks
 
   /// Inserts the user's request as a `queued` root task and returns it.
-  TaskRecord insertRoot(String prompt, String cwd) {
+  TaskRecord insertRoot(
+    String prompt,
+    String cwd, {
+    Map<String, String> options = const {},
+  }) {
     final id = uuidV4();
     final now = _now();
     _db.execute(
       '''
 INSERT INTO tasks (id, parent_id, root_id, kind, title, prompt, cwd, assignee,
   status, attempt, dispatch_token, depends_on, result_path, result_summary,
-  created_at, updated_at)
-VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, ?, 0, NULL, '[]', NULL, NULL, ?, ?)''',
+  created_at, updated_at, options)
+VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, ?, 0, NULL, '[]', NULL, NULL, ?, ?, ?)''',
       [
         id,
         id,
@@ -156,6 +160,7 @@ VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, ?, 0, NULL, '[]', NULL, NULL, ?, ?)''',
         TaskStatus.queued.name,
         now,
         now,
+        jsonEncode(options),
       ],
     );
     return requireTask(id);
@@ -188,8 +193,8 @@ VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, ?, 0, NULL, '[]', NULL, NULL, ?, ?)''',
           '''
 INSERT INTO tasks (id, parent_id, root_id, kind, title, prompt, cwd, assignee,
   status, attempt, dispatch_token, depends_on, result_path, result_summary,
-  created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, NULL, NULL, ?, ?)''',
+  created_at, updated_at, options)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, NULL, NULL, ?, ?, ?)''',
           [
             idMap[task.id],
             root.id,
@@ -203,6 +208,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, NULL, NULL, ?, ?)''',
             jsonEncode(deps),
             now,
             now,
+            jsonEncode(root.options),
           ],
         );
         inserted.add(requireTask(idMap[task.id]!));
@@ -726,7 +732,17 @@ ON CONFLICT(seat) DO UPDATE SET points = points + excluded.points,
       resultSummary: row['result_summary'] as String?,
       createdAt: DateTime.parse(row['created_at'] as String),
       updatedAt: DateTime.parse(row['updated_at'] as String),
+      options: _decodeOptions(row['options']),
     );
+  }
+
+  static Map<String, String> _decodeOptions(Object? raw) {
+    if (raw is! String || raw.isEmpty) return const {};
+    final decoded = _decodeJson(raw);
+    return {
+      for (final e in decoded.entries)
+        if (e.value is String) e.key: e.value as String,
+    };
   }
 
   BoardEvent _eventFromRow(Row row) => BoardEvent(

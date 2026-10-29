@@ -80,16 +80,25 @@ class Supervisor {
   /// Runs [prompt] against the repository at [cwd] to completion and returns
   /// the final root task (`done` with the report in `resultSummary`, or
   /// `failed`). Never throws for agent failures; they land on the root.
-  Future<TaskRecord> run(String prompt, String cwd) {
-    final root = board.insertRoot(prompt, cwd);
+  Future<TaskRecord> run(
+    String prompt,
+    String cwd, {
+    Map<String, String> options = const {},
+  }) {
+    final root = board.insertRoot(prompt, cwd, options: options);
     return _driveRoot(root.id);
   }
 
   /// Runs [prompt] on one [seat] with no planning and no merge turn: one
   /// subtask whose result becomes the root's report. This is the desk-level
   /// "ask" of the office (talk to GPT alone, or to Claude alone).
-  Future<TaskRecord> runDirect(Seat seat, String prompt, String cwd) {
-    final root = board.insertRoot(prompt, cwd);
+  Future<TaskRecord> runDirect(
+    Seat seat,
+    String prompt,
+    String cwd, {
+    Map<String, String> options = const {},
+  }) {
+    final root = board.insertRoot(prompt, cwd, options: options);
     board.insertSubtasks(root.id, [
       PlannedTask(
         id: 'direct',

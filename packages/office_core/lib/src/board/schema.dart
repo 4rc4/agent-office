@@ -1,7 +1,7 @@
 import 'package:sqlite3/sqlite3.dart';
 
 /// Version written to `schema_version` by [applySchema].
-const int schemaVersion = 1;
+const int schemaVersion = 2;
 
 /// Maximum rows kept in `events`; the oldest rows are trimmed on every insert.
 const int eventRingSize = 5000;
@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   result_path TEXT,
   result_summary TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  options TEXT NOT NULL DEFAULT '{}'
 )''',
   'CREATE INDEX IF NOT EXISTS tasks_root_idx ON tasks(root_id)',
   'CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks(status)',
@@ -97,6 +98,12 @@ void applySchema(Database db) {
   for (final statement in schemaStatements) {
     db.execute(statement);
   }
+  // v2: per-root run options (a v1 board has no such column).
+  if (!_hasColumn(db, 'tasks', 'options')) {
+    db.execute(
+      "ALTER TABLE tasks ADD COLUMN options TEXT NOT NULL DEFAULT '{}'",
+    );
+  }
   final rows = db.select('SELECT version FROM schema_version LIMIT 1');
   if (rows.isEmpty) {
     db.execute('INSERT INTO schema_version (version) VALUES (?)', [
@@ -105,4 +112,11 @@ void applySchema(Database db) {
   } else if ((rows.first['version'] as int) < schemaVersion) {
     db.execute('UPDATE schema_version SET version = ?', [schemaVersion]);
   }
+}
+
+bool _hasColumn(Database db, String table, String column) {
+  for (final row in db.select('PRAGMA table_info($table)')) {
+    if (row['name'] == column) return true;
+  }
+  return false;
 }

@@ -49,6 +49,7 @@ class TaskRecord {
     this.dependsOn = const [],
     this.resultPath,
     this.resultSummary,
+    this.options = const {},
   });
 
   final String id;
@@ -67,6 +68,10 @@ class TaskRecord {
   final String? resultSummary;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// Per-root run options the adapters read: `model` and `effort`
+  /// (empty or missing = the adapter's default). Subtasks inherit them.
+  final Map<String, String> options;
 
   TaskRecord copyWith({
     TaskStatus? status,
@@ -94,6 +99,7 @@ class TaskRecord {
       resultSummary: resultSummary ?? this.resultSummary,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      options: options,
     );
   }
 }

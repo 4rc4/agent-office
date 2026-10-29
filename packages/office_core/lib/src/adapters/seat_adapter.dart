@@ -58,3 +58,7 @@ abstract class SeatAdapter {
     String? resumeRef,
   });
 }
+
+/// A task option when it is a non-empty string, else the adapter's default.
+String pickOption(String? override, String fallback) =>
+    override != null && override.trim().isNotEmpty ? override.trim() : fallback;

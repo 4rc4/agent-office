@@ -9,3 +9,6 @@ build/
 
 # Raw output of the Phase 0 spike scripts
 spikes/out/
+
+# Plan execution scratch (ledger, briefs)
+.superpowers/

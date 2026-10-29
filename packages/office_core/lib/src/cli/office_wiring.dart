@@ -69,6 +69,10 @@ class OfficeConfig {
     this.mcpConfigFile,
     this.fake = false,
     this.fixturesDir,
+    this.claudeModel = '',
+    this.claudeEffort = '',
+    this.codexModel = '',
+    this.codexEffort = '',
   });
 
   final OfficePaths paths;
@@ -95,6 +99,14 @@ class OfficeConfig {
 
   /// Overrides where [FakeOffice] looks for its fixtures.
   final String? fixturesDir;
+
+  /// Default Claude `--model` / `--effort` and Codex `-m` /
+  /// `model_reasoning_effort`; empty strings leave the CLI defaults. A
+  /// root task's options override them.
+  final String claudeModel;
+  final String claudeEffort;
+  final String codexModel;
+  final String codexEffort;
 }
 
 /// A built office: the board, the supervisor driving it and the runner the
@@ -152,12 +164,16 @@ Future<Office> buildOffice(OfficeConfig config, {TaskBoard? board}) async {
         config.brainPromptFile ??
         (config.fake ? null : await defaultBrainPromptFile()),
     mcpConfigFile: config.mcpConfigFile,
+    model: config.claudeModel,
+    effort: config.claudeEffort,
     baseEnvironment: claudeEnvironment,
   );
   final codex = CodexAdapter(
     runner: runner,
     executable: config.codexExecutable,
     outputDirectory: config.paths.resultsDir,
+    model: config.codexModel,
+    reasoningEffort: config.codexEffort,
     baseEnvironment: codexEnvironment,
   );
   final adapters = <Seat, SeatAdapter>{Seat.claude: claude, Seat.gpt: codex};
