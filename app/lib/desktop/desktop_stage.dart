@@ -21,6 +21,7 @@ import 'office_actors.dart';
 import 'prompt_bubble.dart';
 import 'settings_bubble.dart';
 import 'stations.dart';
+import 'wallpaper.dart';
 
 /// Requests that reach the stage from outside the widget tree (the tray).
 class DesktopCommands extends ChangeNotifier {
@@ -56,8 +57,10 @@ class _OpenBubble {
 /// and GPT walking between them as the [model] reports what they do, and
 /// one bubble at a time over whatever was clicked.
 ///
-/// No Scaffold: in wallpaper mode the backdrop is the runner's colour key
-/// ([keyColor], see through), in [windowed] mode a dark surface. Clicking an
+/// No Scaffold: in wallpaper mode the backdrop is a copy of the desktop
+/// wallpaper ([initialWallpaper], re-read every [wallpaperPollPeriod] so a
+/// slideshow or a new picture follows), in [windowed] mode a dark surface.
+/// Clicking an
 /// idle character opens the prompt bubble (Claude plans an office task, GPT
 /// gets a direct one), a working one its status; the whiteboard lists the
 /// tasks, the mailbox shows the reports. Stations drag along the floor and
@@ -73,6 +76,7 @@ class DesktopStage extends StatefulWidget {
     this.onSettingsChanged,
     this.commands,
     this.autostart = const NoAutostart(),
+    this.initialWallpaper,
     this.windowed = false,
     this.animate = true,
   });
@@ -81,9 +85,9 @@ class DesktopStage extends StatefulWidget {
   static Key stationKey(StationKind kind) => Key('stage.station.${kind.name}');
   static const Key backdropKey = Key('stage.backdrop');
 
-  /// Colour the runner makes transparent (`kColorKey` in
-  /// `windows/runner/desktop_layer.cpp`).
-  static const Color keyColor = Color(0xFF010203);
+  /// How often the wallpaper is re-read from the runner (a window behind
+  /// the icons gets no change broadcasts).
+  static const Duration wallpaperPollPeriod = Duration(seconds: 5);
 
   /// Floor line height above the bottom edge: room for the taskbar.
   static const double floorFromBottom = 120;
@@ -108,7 +112,11 @@ class DesktopStage extends StatefulWidget {
   /// Backs the "Windows ile başlat" switch of the settings bubble.
   final Autostart autostart;
 
-  /// Plain window fallback (`--window`): dark background, no colour key.
+  /// The wallpaper copy of the first frame (`main` loads it before the
+  /// window shows); null paints the desktop background colour.
+  final DesktopWallpaper? initialWallpaper;
+
+  /// Plain window fallback (`--window`): dark background, no wallpaper.
   final bool windowed;
 
   /// Runs the clock and the idle schedule; tests switch it off and every
@@ -125,6 +133,8 @@ class _DesktopStageState extends State<DesktopStage> {
   Choreographer? _choreo;
   Timer? _clock;
   Timer? _wake;
+  Timer? _wallpaperClock;
+  late DesktopWallpaper? _wallpaper = widget.initialWallpaper;
   int _tick = 0;
   Seat? _hovered;
   _OpenBubble? _bubble;
@@ -140,6 +150,25 @@ class _DesktopStageState extends State<DesktopStage> {
     widget.model.addListener(_onModel);
     widget.commands?.addListener(_onCommand);
     widget.layer.onFocusLost = _closeBubble;
+    if (!widget.windowed && widget.animate) {
+      _wallpaperClock = Timer.periodic(
+        DesktopStage.wallpaperPollPeriod,
+        (_) => unawaited(_refreshWallpaper()),
+      );
+    }
+  }
+
+  /// Re-reads the wallpaper; repaints only when the runner reports a
+  /// different one.
+  Future<void> _refreshWallpaper() async {
+    final current = _wallpaper;
+    final next = await DesktopWallpaper.load(
+      query: widget.layer.wallpaper,
+      current: current,
+    );
+    if (!mounted || next == null || identical(next, current)) return;
+    setState(() => _wallpaper = next);
+    current?.image?.dispose();
   }
 
   @override
@@ -151,6 +180,8 @@ class _DesktopStageState extends State<DesktopStage> {
     }
     _clock?.cancel();
     _wake?.cancel();
+    _wallpaperClock?.cancel();
+    _wallpaper?.image?.dispose();
     _stageFocus.dispose();
     super.dispose();
   }
@@ -463,7 +494,8 @@ class _DesktopStageState extends State<DesktopStage> {
                 state: _stationState(snapshot),
                 frame: _tick % 4,
                 tick: _tick,
-                keyColor: DesktopStage.keyColor,
+                wallpaper: _wallpaper,
+                devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
                 hovered: _hovered,
                 windowed: widget.windowed,
               ),

@@ -7,11 +7,21 @@
 #include <utility>
 #include <vector>
 
+#include "desktop_wallpaper.h"
 #include "flutter/generated_plugin_registrant.h"
+#include "utils.h"
 
 namespace {
 
 constexpr char kDesktopChannel[] = "agent_office/desktop";
+
+flutter::EncodableValue RectValue(const RECT& rect) {
+  return flutter::EncodableValue(flutter::EncodableList{
+      flutter::EncodableValue(static_cast<int32_t>(rect.left)),
+      flutter::EncodableValue(static_cast<int32_t>(rect.top)),
+      flutter::EncodableValue(static_cast<int32_t>(rect.right)),
+      flutter::EncodableValue(static_cast<int32_t>(rect.bottom))});
+}
 
 }  // namespace
 
@@ -47,7 +57,6 @@ bool FlutterWindow::OnCreate() {
              std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
                  result) { HandleDesktopCall(call, std::move(result)); });
   if (IsLayer()) {
-    DesktopLayer::MakeTransparent(GetHandle());
     desktop_layer_ = std::make_unique<DesktopLayer>(GetHandle());
   }
 
@@ -84,6 +93,21 @@ void FlutterWindow::HandleDesktopCall(
     result->Success(flutter::EncodableValue(flutter::EncodableList{
         flutter::EncodableValue(GetSystemMetrics(SM_CXSCREEN)),
         flutter::EncodableValue(GetSystemMetrics(SM_CYSCREEN))}));
+    return;
+  }
+  if (method == "wallpaper") {
+    const WallpaperInfo info = QueryWallpaper();
+    result->Success(flutter::EncodableValue(flutter::EncodableMap{
+        {flutter::EncodableValue("path"),
+         flutter::EncodableValue(Utf8FromUtf16(info.path.c_str()))},
+        {flutter::EncodableValue("position"),
+         flutter::EncodableValue(info.position)},
+        {flutter::EncodableValue("color"),
+         flutter::EncodableValue(static_cast<int32_t>(info.color))},
+        {flutter::EncodableValue("monitor"), RectValue(info.monitor)},
+        {flutter::EncodableValue("virtualScreen"),
+         RectValue(info.virtual_screen)},
+    }));
     return;
   }
   if (method == "quit") {
@@ -154,9 +178,9 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       }
       break;
     case WM_NCHITTEST:
-      // Outside the hit rects the layer is not ours to click; the cursor
-      // watch also sets WS_EX_TRANSPARENT there so other processes' windows
-      // get the click.
+      // Outside the hit rects the layer is not ours to click. While raised
+      // the window region already clips those parts away; this covers the
+      // moment before the first region is applied.
       if (desktop_layer_ && desktop_layer_->entered()) {
         const POINT point = {
             static_cast<LONG>(static_cast<SHORT>(LOWORD(lparam))),

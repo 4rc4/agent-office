@@ -9,15 +9,18 @@ import 'desktop/desktop_app.dart';
 import 'desktop/desktop_layer.dart';
 import 'desktop/desktop_stage.dart';
 import 'desktop/tray.dart';
+import 'desktop/wallpaper.dart';
 import 'runtime/office_runtime.dart';
 import 'runtime/office_settings.dart';
 import 'widgets/startup_error_screen.dart';
 
 /// Entry point.
 ///
-/// The live office on the wallpaper layer, a transparent full-screen window
-/// the runner parks behind the desktop icons once the first frame is up
-/// (`DesktopLayer.enterWallpaperMode`). The office runtime starts from
+/// The live office on the wallpaper layer, a full-screen window the runner
+/// parks behind the desktop icons once the first frame is up
+/// (`DesktopLayer.enterWallpaperMode`); it paints a copy of the desktop
+/// wallpaper, loaded here so the first frame already shows it. The office
+/// runtime starts from
 /// `settings.json` (`--fake` replays canned vendor output) and resumes
 /// interrupted work; station positions, recent folders and the settings
 /// sheet are saved back there. A tray icon pauses the office, opens the
@@ -40,6 +43,9 @@ Future<void> main(List<String> args) async {
   }
   final controller = runtime.controller;
   final layer = DesktopLayer();
+  final wallpaper = windowed
+      ? null
+      : await DesktopWallpaper.load(query: layer.wallpaper);
   final commands = DesktopCommands();
   final tray = OfficeTray(
     onTogglePause: () => unawaited(controller.setPaused(!controller.paused)),
@@ -63,6 +69,7 @@ Future<void> main(List<String> args) async {
       onSettingsChanged: (next) => unawaited(_save(next)),
       commands: commands,
       autostart: SystemAutostart(),
+      wallpaper: wallpaper,
       windowed: windowed,
     ),
   );

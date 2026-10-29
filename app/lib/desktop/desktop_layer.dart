@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-/// Dart side of the Windows "wallpaper layer": the borderless, transparent,
-/// full-screen window the runner keeps behind the desktop icons.
+import 'wallpaper.dart';
+
+/// Dart side of the Windows "wallpaper layer": the borderless full-screen
+/// window the runner keeps behind the desktop icons.
 ///
 /// Every method is a call over the `agent_office/desktop` [MethodChannel]
 /// handled in `windows/runner/flutter_window.cpp`. Without a handler (tests,
@@ -64,6 +66,13 @@ class DesktopLayer {
     final list = await _call<List<Object?>>('screenSize');
     if (list == null || list.length < 2) return Size.zero;
     return Size((list[0]! as num).toDouble(), (list[1]! as num).toDouble());
+  }
+
+  /// The shell's wallpaper of the primary monitor (the stage paints a copy
+  /// of it as its backdrop); null without a runner.
+  Future<WallpaperInfo?> wallpaper() async {
+    final map = await _call<Map<Object?, Object?>>('wallpaper');
+    return map == null ? null : WallpaperInfo.fromMap(map);
   }
 
   /// Closes the window: the runner posts WM_CLOSE, which runs the normal

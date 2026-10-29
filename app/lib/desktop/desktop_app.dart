@@ -7,10 +7,11 @@ import '../widgets/office_theme.dart';
 import 'autostart.dart';
 import 'desktop_layer.dart';
 import 'desktop_stage.dart';
+import 'wallpaper.dart';
 
 /// The desktop-mode app: a [MaterialApp] (for the text field, buttons and
 /// tooltips) whose only page is the [DesktopStage]. Nothing here paints a
-/// background; the stage decides between the colour key and the dark
+/// background; the stage decides between the wallpaper copy and the dark
 /// `--window` surface.
 class DesktopApp extends StatelessWidget {
   const DesktopApp({
@@ -21,6 +22,7 @@ class DesktopApp extends StatelessWidget {
     this.onSettingsChanged,
     this.commands,
     this.autostart = const NoAutostart(),
+    this.wallpaper,
     this.windowed = false,
     this.animate = true,
   });
@@ -31,6 +33,10 @@ class DesktopApp extends StatelessWidget {
   final ValueChanged<OfficeSettings>? onSettingsChanged;
   final DesktopCommands? commands;
   final Autostart autostart;
+
+  /// The wallpaper copy for the first frame, see
+  /// [DesktopStage.initialWallpaper].
+  final DesktopWallpaper? wallpaper;
   final bool windowed;
   final bool animate;
 
@@ -51,6 +57,7 @@ class DesktopApp extends StatelessWidget {
         onSettingsChanged: onSettingsChanged,
         commands: commands,
         autostart: autostart,
+        initialWallpaper: wallpaper,
         windowed: windowed,
         animate: animate,
       ),

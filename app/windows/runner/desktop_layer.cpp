@@ -11,10 +11,6 @@ constexpr UINT kSpawnWorkerW = 0x052C;
 // Cursor watch period in milliseconds.
 constexpr UINT kPollMs = 40;
 
-// Pixels of this colour are see-through. Must match DesktopStage.keyColor in
-// lib/desktop/desktop_stage.dart (0xFF010203).
-constexpr COLORREF kColorKey = RGB(1, 2, 3);
-
 bool HasClass(HWND window, const wchar_t* class_name) {
   wchar_t name[64] = {};
   if (window == nullptr || GetClassNameW(window, name, 64) == 0) {
@@ -46,16 +42,33 @@ int ScreenWidth() { return GetSystemMetrics(SM_CXSCREEN); }
 
 int ScreenHeight() { return GetSystemMetrics(SM_CYSCREEN); }
 
+bool SameRects(const std::vector<RECT>& a, const std::vector<RECT>& b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (!EqualRect(&a[i], &b[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// The cursor in window coordinates, or nullopt-like failure as false.
+bool CursorInWindow(HWND window, POINT* local) {
+  POINT cursor = {};
+  RECT bounds = {};
+  if (!GetCursorPos(&cursor) || !GetWindowRect(window, &bounds)) {
+    return false;
+  }
+  local->x = cursor.x - bounds.left;
+  local->y = cursor.y - bounds.top;
+  return true;
+}
+
 }  // namespace
 
 DesktopLayer::DesktopLayer(HWND window) : window_(window) {}
-
-// static
-void DesktopLayer::MakeTransparent(HWND window) {
-  LONG_PTR ex_style = GetWindowLongPtr(window, GWL_EXSTYLE);
-  SetWindowLongPtr(window, GWL_EXSTYLE, ex_style | WS_EX_LAYERED);
-  SetLayeredWindowAttributes(window, kColorKey, 0, LWA_COLORKEY);
-}
 
 // static
 HWND DesktopLayer::FindWorkerW() {
@@ -94,17 +107,25 @@ bool DesktopLayer::Enter() {
 void DesktopLayer::Pin() {
   pinned_ = true;
   if (raised_) {
-    SetClickThrough(false);
+    ApplyRegion();
     SetForegroundWindow(window_);
   } else {
     Raise(true);
   }
 }
 
-void DesktopLayer::Release() { pinned_ = false; }
+void DesktopLayer::Release() {
+  pinned_ = false;
+  if (raised_) {
+    ApplyRegion();
+  }
+}
 
 void DesktopLayer::SetHitRects(std::vector<RECT> rects) {
   rects_ = std::move(rects);
+  if (raised_) {
+    ApplyRegion();
+  }
 }
 
 bool DesktopLayer::Contains(POINT screen_point) const {
@@ -148,7 +169,7 @@ bool DesktopLayer::Poll() {
     if (!pinned_ && !inside && workerw_ != nullptr) {
       Lower();
     } else {
-      SetClickThrough(!inside);
+      ApplyRegion();
     }
   } else if (inside) {
     HWND under = WindowFromPoint(cursor);
@@ -168,6 +189,7 @@ void DesktopLayer::Raise(bool activate) {
   }
   SetWindowPos(window_, HWND_TOPMOST, 0, 0, ScreenWidth(), ScreenHeight(),
                flags);
+  ApplyRegion();
   if (activate) {
     SetForegroundWindow(window_);
   }
@@ -175,7 +197,12 @@ void DesktopLayer::Raise(bool activate) {
 
 void DesktopLayer::Lower() {
   raised_ = false;
-  SetClickThrough(false);
+  if (has_region_) {
+    // Behind the icons the whole backdrop must show again.
+    SetWindowRgn(window_, nullptr, FALSE);
+    has_region_ = false;
+    region_rects_.clear();
+  }
   if (GetForegroundWindow() == window_) {
     // Hand activation to the next window before becoming a child.
     ShowWindow(window_, SW_HIDE);
@@ -191,16 +218,26 @@ void DesktopLayer::Lower() {
                ScreenHeight(), SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
 }
 
-void DesktopLayer::SetClickThrough(bool on) {
-  if (click_through_ == on) {
+void DesktopLayer::ApplyRegion() {
+  POINT local = {};
+  const bool have_cursor = CursorInWindow(window_, &local);
+  std::vector<RECT> visible;
+  for (const RECT& rect : rects_) {
+    if (pinned_ || (have_cursor && PtInRect(&rect, local))) {
+      visible.push_back(rect);
+    }
+  }
+  if (has_region_ && SameRects(visible, region_rects_)) {
     return;
   }
-  click_through_ = on;
-  LONG_PTR ex_style = GetWindowLongPtr(window_, GWL_EXSTYLE);
-  if (on) {
-    ex_style |= WS_EX_TRANSPARENT;
-  } else {
-    ex_style &= ~static_cast<LONG_PTR>(WS_EX_TRANSPARENT);
+  HRGN region = CreateRectRgn(0, 0, 0, 0);
+  for (const RECT& rect : visible) {
+    HRGN part = CreateRectRgnIndirect(&rect);
+    CombineRgn(region, region, part, RGN_OR);
+    DeleteObject(part);
   }
-  SetWindowLongPtr(window_, GWL_EXSTYLE, ex_style);
+  // The system owns |region| from here on.
+  SetWindowRgn(window_, region, TRUE);
+  region_rects_ = std::move(visible);
+  has_region_ = true;
 }

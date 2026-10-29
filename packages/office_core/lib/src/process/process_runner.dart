@@ -80,29 +80,55 @@ class DartProcessRunner implements ProcessRunner {
 /// and `codex` as `claude.cmd` / `codex.cmd`, so a bare name fails with
 /// "The system cannot find the file specified". This walks PATH (from
 /// [environment] or the process) and tries every PATHEXT extension, the way
-/// cmd.exe would. A name that already points at an existing file, or that
-/// contains a path separator, is returned unchanged; so is a name that is
-/// not found (Process.start then reports the real error).
+/// cmd.exe would. A name that contains a path separator is returned
+/// unchanged; so is a name that is not found (Process.start then reports
+/// the real error).
+///
+/// npm also drops an extensionless `claude` next to `claude.cmd`: the POSIX
+/// shell shim. cmd.exe never runs that file (a name without one of the
+/// PATHEXT extensions is not a program), and CreateProcess rejects it with
+/// "%1 is not a valid Win32 application", so on Windows the bare name only
+/// counts when it already ends in a PATHEXT extension.
 String resolveExecutable(String name, {Map<String, String>? environment}) {
-  if (name.contains('/') || name.contains(r'\') || File(name).existsSync()) {
-    return name;
-  }
-  final env = {...Platform.environment, ...?environment};
-  final pathValue = env['PATH'] ?? env['Path'] ?? '';
-  final separator = Platform.isWindows ? ';' : ':';
-  final extensions = Platform.isWindows
-      ? [
-          '',
-          ...(env['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD')
-              .split(';')
-              .where((e) => e.isNotEmpty)
-              .map((e) => e.toLowerCase()),
-        ]
-      : [''];
-  for (final dir in pathValue.split(separator)) {
+  return _resolveExecutable(
+    name,
+    environment: {...Platform.environment, ...?environment},
+    isWindows: Platform.isWindows,
+  );
+}
+
+/// [resolveExecutable] with the platform pinned, for tests.
+String resolveExecutableOn(
+  String name, {
+  required Map<String, String> environment,
+  required bool isWindows,
+}) => _resolveExecutable(name, environment: environment, isWindows: isWindows);
+
+String _resolveExecutable(
+  String name, {
+  required Map<String, String> environment,
+  required bool isWindows,
+}) {
+  if (name.contains('/') || name.contains(r'\')) return name;
+  final pathExtensions = isWindows
+      ? (environment['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD')
+            .split(';')
+            .where((e) => e.isNotEmpty)
+            .map((e) => e.toLowerCase())
+            .toList()
+      : const <String>[];
+  final lower = name.toLowerCase();
+  final hasProgramExtension =
+      !isWindows || pathExtensions.any((ext) => lower.endsWith(ext));
+  if (hasProgramExtension && File(name).existsSync()) return name;
+  final extensions = [if (hasProgramExtension) '', ...pathExtensions];
+  final pathValue = environment['PATH'] ?? environment['Path'] ?? '';
+  final pathSeparator = isWindows ? ';' : ':';
+  final fileSeparator = isWindows ? r'\' : '/';
+  for (final dir in pathValue.split(pathSeparator)) {
     if (dir.isEmpty) continue;
     for (final ext in extensions) {
-      final candidate = '$dir${Platform.pathSeparator}$name$ext';
+      final candidate = '$dir$fileSeparator$name$ext';
       if (File(candidate).existsSync()) return candidate;
     }
   }
