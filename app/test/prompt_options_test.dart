@@ -136,4 +136,76 @@ void main() {
     expect(next.claudeEffort, '');
     expect(next.codexEffort, 'low');
   });
+
+  testWidgets('model choices open inside the bubble, never as a popup', (
+    tester,
+  ) async {
+    await pumpDesktop(
+      tester,
+      FakeOfficeModel(),
+      pickFiles: () async => [r'C:\img\shot.png'],
+    );
+    await tester.tap(find.byKey(DesktopStage.actorKey(Seat.claude)));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(PromptBubble.modelChipKey));
+    await tester.pumpAndSettle();
+    expect(find.byType(PopupMenuItem<String>), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(PromptBubble),
+        matching: find.text('haiku'),
+      ),
+      findsOneWidget,
+    );
+    // The open choices are part of the bubble, so they are in its hit rect.
+    final bubble = tester.getRect(find.byType(PromptBubble));
+    expect(bubble.contains(tester.getCenter(find.text('haiku'))), isTrue);
+    // No tooltips either: their overlay outlives the bubble on the desktop.
+    await tester.tap(find.byKey(PromptBubble.filesButtonKey));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(PromptBubble),
+        matching: find.byType(Tooltip),
+      ),
+      findsNothing,
+    );
+    // Closing the bubble leaves nothing of the menu behind.
+    await tester.tap(find.byKey(DesktopStage.actorKey(Seat.claude)));
+    await tester.pumpAndSettle();
+    expect(find.text('haiku'), findsNothing);
+  });
+
+  testWidgets('settings choices open inside the sheet, not as a dropdown', (
+    tester,
+  ) async {
+    final commands = DesktopCommands();
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      DesktopApp(
+        model: FakeOfficeModel(),
+        layer: DesktopLayer(),
+        settings: testSettings,
+        commands: commands,
+        animate: false,
+      ),
+    );
+    await tester.pump();
+    commands.openSettings();
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(DropdownButton<String>), findsNothing);
+    await tester.tap(find.byKey(SettingsBubble.claudeModelKey));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(SettingsBubble),
+        matching: find.text('sonnet'),
+      ),
+      findsOneWidget,
+    );
+  });
 }

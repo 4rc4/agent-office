@@ -408,6 +408,10 @@ class _DesktopStageState extends State<DesktopStage> {
 
   void _closeBubble() {
     if (_bubble == null || !mounted) return;
+    // Overlays (a text field's context menu, any popup route) live outside
+    // the bubble's rect and would stay painted on the desktop.
+    ContextMenuController.removeAny();
+    Navigator.of(context).popUntil((route) => route.isFirst);
     setState(() => _bubble = null);
     _stageFocus.requestFocus();
     unawaited(widget.layer.sendToBack());

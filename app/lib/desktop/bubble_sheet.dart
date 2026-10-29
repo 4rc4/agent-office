@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../l10n_tr.dart';
 import '../widgets/office_theme.dart';
 
 /// A cream sheet with a navy outline, a solid drop shadow and a pointer at
@@ -59,7 +58,6 @@ class BubbleSheet extends StatelessWidget {
                     padding: EdgeInsets.zero,
                     iconSize: 18,
                     color: PixelColors.inkMuted,
-                    tooltip: Tr.close,
                     icon: const Icon(Icons.close_rounded),
                   ),
                 ),

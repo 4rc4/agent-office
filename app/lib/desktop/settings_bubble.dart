@@ -7,6 +7,7 @@ import '../runtime/office_settings.dart';
 import '../widgets/office_theme.dart';
 import 'autostart.dart';
 import 'bubble_sheet.dart';
+import 'choice_widgets.dart';
 import 'model_choices.dart';
 
 /// The settings sheet (opened from the tray): the `claude` and `codex`
@@ -70,6 +71,9 @@ class _SettingsBubbleState extends State<SettingsBubble> {
   late String _codexModel = widget.settings.codexModel;
   late String _codexEffort = widget.settings.codexEffort;
   bool _autostart = false;
+
+  /// The choice row whose options are open (its key), or null.
+  Key? _open;
 
   @override
   void initState() {
@@ -153,26 +157,13 @@ class _SettingsBubbleState extends State<SettingsBubble> {
             SettingsBubble.findCodexKey,
           ),
           const SizedBox(height: 6),
-          Row(
-            children: [
-              const Expanded(
-                child: Text(Tr.permissionMode, style: PixelText.muted),
-              ),
-              DropdownButton<String>(
-                key: SettingsBubble.modeKey,
-                value: _mode,
-                isDense: true,
-                style: PixelText.body,
-                dropdownColor: PixelColors.paperLight,
-                items: [
-                  for (final mode in modes)
-                    DropdownMenuItem(value: mode, child: Text(mode)),
-                ],
-                onChanged: (mode) {
-                  if (mode != null) setState(() => _mode = mode);
-                },
-              ),
-            ],
+          _choiceRow(
+            Tr.permissionMode,
+            SettingsBubble.modeKey,
+            _mode,
+            modes,
+            (m) => m,
+            (v) => setState(() => _mode = v),
           ),
           _choiceRow(
             Tr.claudeModel,
@@ -282,7 +273,9 @@ class _SettingsBubbleState extends State<SettingsBubble> {
     );
   }
 
-  /// A labelled dropdown; a saved value outside [choices] stays selectable.
+  /// A labelled value chip; tapping it lists [choices] below, inside the
+  /// sheet (no dropdown: its overlay escapes the sheet's hit rect). A saved
+  /// value outside [choices] stays selectable.
   Widget _choiceRow(
     String label,
     Key key,
@@ -292,24 +285,38 @@ class _SettingsBubbleState extends State<SettingsBubble> {
     ValueChanged<String> onChanged,
   ) {
     final items = [...choices, if (!choices.contains(value)) value];
-    return Row(
-      children: [
-        Expanded(child: Text(label, style: PixelText.muted)),
-        DropdownButton<String>(
-          key: key,
-          value: value,
-          isDense: true,
-          style: PixelText.body,
-          dropdownColor: PixelColors.paperLight,
-          items: [
-            for (final choice in items)
-              DropdownMenuItem(value: choice, child: Text(labelOf(choice))),
+    final open = _open == key;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(label, style: PixelText.muted)),
+              ValueChip(
+                key: key,
+                label: labelOf(value),
+                open: open,
+                onTap: () => setState(() => _open = open ? null : key),
+              ),
+            ],
+          ),
+          if (open) ...[
+            const SizedBox(height: 4),
+            ChoiceStrip(
+              choices: items,
+              selected: value,
+              labelOf: labelOf,
+              onChosen: (choice) {
+                setState(() => _open = null);
+                onChanged(choice);
+              },
+            ),
           ],
-          onChanged: (choice) {
-            if (choice != null) onChanged(choice);
-          },
-        ),
-      ],
+        ],
+      ),
     );
   }
 

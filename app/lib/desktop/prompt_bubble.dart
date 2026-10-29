@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../l10n_tr.dart';
 import '../widgets/office_theme.dart';
 import 'bubble_sheet.dart';
+import 'choice_widgets.dart';
 import 'folder_name.dart';
 import 'model_choices.dart';
 
@@ -73,6 +74,9 @@ class _PromptBubbleState extends State<PromptBubble> {
   final TextEditingController _text = TextEditingController();
   final FocusNode _field = FocusNode(debugLabel: 'promptField');
 
+  /// Which choice is open under the chips: 'model', 'effort' or null.
+  String? _menu;
+
   @override
   void initState() {
     super.initState();
@@ -120,14 +124,11 @@ class _PromptBubbleState extends State<PromptBubble> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Tooltip(
-                  message: folder ?? Tr.noFolder,
-                  child: Text(
-                    folder ?? Tr.noFolder,
-                    style: folder == null ? PixelText.faint : PixelText.muted,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                child: Text(
+                  folder ?? Tr.noFolder,
+                  style: folder == null ? PixelText.faint : PixelText.muted,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 8),
@@ -147,17 +148,14 @@ class _PromptBubbleState extends State<PromptBubble> {
               runSpacing: 4,
               children: [
                 for (final f in chips)
-                  Tooltip(
-                    message: f,
-                    child: ActionChip(
-                      label: Text(folderName(f), style: PixelText.faint),
-                      onPressed: () => widget.onFolderChosen(f),
-                      backgroundColor: PixelColors.paperLight,
-                      side: const BorderSide(color: PixelColors.paperEdge),
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
+                  ActionChip(
+                    label: Text(folderName(f), style: PixelText.faint),
+                    onPressed: () => widget.onFolderChosen(f),
+                    backgroundColor: PixelColors.paperLight,
+                    side: const BorderSide(color: PixelColors.paperEdge),
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
               ],
             ),
@@ -167,86 +165,96 @@ class _PromptBubbleState extends State<PromptBubble> {
     );
   }
 
-  /// Model chip, effort chip, the file button and the attachment chips.
+  /// Model chip, effort chip, the file button and the attachment chips;
+  /// an open chip lists its choices right below, inside the bubble.
   Widget _optionsRow() {
     final options = widget.options;
-    return Wrap(
-      spacing: 4,
-      runSpacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
+    final menu = _menu;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _menuChip(
-          key: PromptBubble.modelChipKey,
-          label: '${Tr.model}: ${Tr.modelLabel(options.model)}',
-          choices: ['', ...ModelChoices.modelsFor(widget.seat)],
-          labelOf: Tr.modelLabel,
-          onChosen: (m) =>
-              widget.onOptionsChanged?.call(options.copyWith(model: m)),
-        ),
-        _menuChip(
-          key: PromptBubble.effortChipKey,
-          label: '${Tr.effort}: ${Tr.effortLabel(options.effort)}',
-          choices: ['', ...ModelChoices.effortsFor(widget.seat)],
-          labelOf: Tr.effortLabel,
-          onChosen: (e) =>
-              widget.onOptionsChanged?.call(options.copyWith(effort: e)),
-        ),
-        SheetButton(
-          key: PromptBubble.filesButtonKey,
-          label: Tr.files,
-          icon: Icons.attach_file_rounded,
-          onPressed: widget.onPickFiles,
-        ),
-        for (final path in widget.attachments)
-          Tooltip(
-            message: path,
-            child: InputChip(
-              key: PromptBubble.attachmentKey(path),
-              label: Text(p.basename(path), style: PixelText.faint),
-              onDeleted: () => widget.onRemoveAttachment?.call(path),
-              deleteIcon: const Icon(Icons.close_rounded, size: 14),
-              deleteIconColor: PixelColors.ink,
-              backgroundColor: PixelColors.paperLight,
-              side: const BorderSide(color: PixelColors.paperEdge),
-              padding: EdgeInsets.zero,
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ValueChip(
+              key: PromptBubble.modelChipKey,
+              label: '${Tr.model}: ${Tr.modelLabel(options.model)}',
+              open: menu == 'model',
+              onTap: () => _toggle('model'),
             ),
+            ValueChip(
+              key: PromptBubble.effortChipKey,
+              label: '${Tr.effort}: ${Tr.effortLabel(options.effort)}',
+              open: menu == 'effort',
+              onTap: () => _toggle('effort'),
+            ),
+            SheetButton(
+              key: PromptBubble.filesButtonKey,
+              label: Tr.files,
+              icon: Icons.attach_file_rounded,
+              onPressed: widget.onPickFiles,
+            ),
+            for (final path in widget.attachments)
+              Container(
+                key: PromptBubble.attachmentKey(path),
+                padding: const EdgeInsets.only(left: 8, right: 2),
+                decoration: BoxDecoration(
+                  color: PixelColors.paperLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: PixelColors.paperEdge, width: 1.5),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(p.basename(path), style: PixelText.faint),
+                    InkWell(
+                      onTap: () => widget.onRemoveAttachment?.call(path),
+                      borderRadius: BorderRadius.circular(10),
+                      child: const Padding(
+                        padding: EdgeInsets.all(3),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 14,
+                          color: PixelColors.ink,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        if (menu == 'model') ...[
+          const SizedBox(height: 4),
+          ChoiceStrip(
+            choices: ['', ...ModelChoices.modelsFor(widget.seat)],
+            selected: options.model,
+            labelOf: Tr.modelLabel,
+            onChosen: (m) => _choose(options.copyWith(model: m)),
           ),
+        ],
+        if (menu == 'effort') ...[
+          const SizedBox(height: 4),
+          ChoiceStrip(
+            choices: ['', ...ModelChoices.effortsFor(widget.seat)],
+            selected: options.effort,
+            labelOf: Tr.effortLabel,
+            onChosen: (e) => _choose(options.copyWith(effort: e)),
+          ),
+        ],
       ],
     );
   }
 
-  Widget _menuChip({
-    required Key key,
-    required String label,
-    required List<String> choices,
-    required String Function(String) labelOf,
-    required ValueChanged<String> onChosen,
-  }) {
-    return PopupMenuButton<String>(
-      key: key,
-      tooltip: '',
-      color: PixelColors.paperLight,
-      onSelected: onChosen,
-      itemBuilder: (_) => [
-        for (final choice in choices)
-          PopupMenuItem(
-            value: choice,
-            height: 32,
-            child: Text(labelOf(choice), style: PixelText.body),
-          ),
-      ],
-      child: Chip(
-        label: Text(label, style: PixelText.faint),
-        avatar: const Icon(Icons.expand_more_rounded, size: 14),
-        backgroundColor: PixelColors.paperLight,
-        side: const BorderSide(color: PixelColors.paperEdge),
-        padding: EdgeInsets.zero,
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-    );
+  void _toggle(String menu) =>
+      setState(() => _menu = _menu == menu ? null : menu);
+
+  void _choose(PromptOptions next) {
+    setState(() => _menu = null);
+    widget.onOptionsChanged?.call(next);
   }
 
   Widget _promptField() {
