@@ -114,6 +114,67 @@ class DesktopStage extends StatefulWidget {
   /// How long the report notice stays over the mailbox.
   static const Duration noticeDuration = Duration(seconds: 15);
 
+  /// The TV's bars: every rate-limit window the CLIs reported (Claude's
+  /// 5-hour and weekly), then a dim token bar for a seat without limits.
+  /// A window whose reset time is before [now] is marked renewed.
+  static List<UsageBar> usageBars(OfficeSnapshot snapshot, {DateTime? now}) {
+    final at = now ?? DateTime.now();
+    final bars = <UsageBar>[];
+    for (final seat in const [Seat.claude, Seat.gpt]) {
+      final windows = snapshot.usage.where((u) => u.seat == seat).toList()
+        ..sort((a, b) => a.window.compareTo(b.window));
+      if (windows.isEmpty) {
+        final tokens = snapshot.seat(seat).tokensIn;
+        if (tokens > 0) {
+          bars.add(
+            UsageBar(
+              seat: seat,
+              window: 'tokens',
+              pct: (tokens / 400000).clamp(0, 1).toDouble(),
+              dim: true,
+              tokens: tokens,
+            ),
+          );
+        }
+        continue;
+      }
+      for (final u in windows) {
+        final resets = u.resetsAt;
+        final renewed = resets != null && resets.isBefore(at);
+        final known = u.usedPct >= 0 && !renewed;
+        bars.add(
+          UsageBar(
+            seat: seat,
+            window: u.window,
+            pct: known ? (u.usedPct / 100).clamp(0, 1).toDouble() : 0,
+            resetsAt: resets,
+            known: known,
+            renewed: renewed,
+          ),
+        );
+      }
+    }
+    return bars;
+  }
+
+  /// One line of the TV caption: seat, window, percentage (or "sorun yok"
+  /// / "yenilendi") and the reset time.
+  static String captionLine(UsageBar bar, {DateTime? now}) {
+    final seat = Tr.seatName(bar.seat);
+    if (bar.dim) {
+      final k = (bar.tokens / 1000).toStringAsFixed(
+        bar.tokens >= 100000 ? 0 : 1,
+      );
+      return '$seat · ${k}k ${Tr.tokensOnly}';
+    }
+    final window = Tr.windowLabel(bar.window);
+    if (bar.renewed) return '$seat · $window ${Tr.usageRenewed}';
+    final value = bar.known ? '%${(bar.pct * 100).round()}' : Tr.usageOk;
+    final resets = bar.resetsAt;
+    return '$seat · $window $value'
+        '${resets == null ? '' : ' · ${Tr.resetsAt(resets, now: now)}'}';
+  }
+
   /// How long a permission balloon is held over other windows.
   static const Duration approvalPeek = Duration(minutes: 2);
 
@@ -589,44 +650,8 @@ class _DesktopStageState extends State<DesktopStage> {
       screens: screens,
       notes: snapshot.tasks.take(6).toList(),
       flagUp: snapshot.unreadReports > 0,
-      bars: usageBars(snapshot),
+      bars: DesktopStage.usageBars(snapshot),
     );
-  }
-
-  /// The TV's bars: every rate-limit window the CLIs reported (Claude's
-  /// 5-hour and weekly), then a dim token bar for a seat without limits.
-  static List<UsageBar> usageBars(OfficeSnapshot snapshot) {
-    final bars = <UsageBar>[];
-    for (final seat in const [Seat.claude, Seat.gpt]) {
-      final windows = snapshot.usage.where((u) => u.seat == seat).toList()
-        ..sort((a, b) => a.window.compareTo(b.window));
-      if (windows.isEmpty) {
-        final tokens = snapshot.seat(seat).tokensIn;
-        if (tokens > 0) {
-          bars.add(
-            UsageBar(
-              seat: seat,
-              window: 'tokens',
-              pct: (tokens / 400000).clamp(0, 1).toDouble(),
-              dim: true,
-              tokens: tokens,
-            ),
-          );
-        }
-        continue;
-      }
-      for (final u in windows) {
-        bars.add(
-          UsageBar(
-            seat: seat,
-            window: u.window,
-            pct: (u.usedPct / 100).clamp(0, 1).toDouble(),
-            resetsAt: u.resetsAt,
-          ),
-        );
-      }
-    }
-    return bars;
   }
 
   @override
@@ -718,7 +743,7 @@ class _DesktopStageState extends State<DesktopStage> {
             ),
           ),
         if (_bubble?.kind != _BubbleKind.tv)
-          ?_tvCaption(size, snapshot, stationRects[StationKind.tv]!),
+          _tvCaption(size, snapshot, stationRects[StationKind.tv]!),
         if (snapshot.approvals.isNotEmpty)
           _approvalWidget(size, snapshot.approvals.first, actorRects),
         if (_notice != null)
@@ -732,11 +757,10 @@ class _DesktopStageState extends State<DesktopStage> {
   /// The usage numbers under the TV (below the floor line, clear of the
   /// characters' bubbles), always on (no tap needed): one line
   /// per bar with the percentage and the reset time. Takes no clicks and is
-  /// not a hit rect, so it stays behind the desktop icons. Null without
-  /// usage data.
-  Widget? _tvCaption(Size size, OfficeSnapshot snapshot, Rect tv) {
-    final bars = usageBars(snapshot);
-    if (bars.isEmpty) return null;
+  /// not a hit rect, so it stays behind the desktop icons. Without usage
+  /// data it says when the numbers come.
+  Widget _tvCaption(Size size, OfficeSnapshot snapshot, Rect tv) {
+    final bars = DesktopStage.usageBars(snapshot);
     const width = 340.0;
     const margin = 8.0;
     final left = (tv.center.dx - width / 2).clamp(
@@ -769,6 +793,7 @@ class _DesktopStageState extends State<DesktopStage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (bars.isEmpty) const Text(Tr.usagePending, style: text),
                   for (final bar in bars)
                     Row(
                       mainAxisSize: MainAxisSize.min,
@@ -784,7 +809,12 @@ class _DesktopStageState extends State<DesktopStage> {
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
-                        Flexible(child: Text(_captionLine(bar), style: text)),
+                        Flexible(
+                          child: Text(
+                            DesktopStage.captionLine(bar),
+                            style: text,
+                          ),
+                        ),
                       ],
                     ),
                 ],
@@ -794,20 +824,6 @@ class _DesktopStageState extends State<DesktopStage> {
         ),
       ),
     );
-  }
-
-  static String _captionLine(UsageBar bar) {
-    final seat = Tr.seatName(bar.seat);
-    if (bar.dim) {
-      final k = (bar.tokens / 1000).toStringAsFixed(
-        bar.tokens >= 100000 ? 0 : 1,
-      );
-      return '$seat · ${k}k ${Tr.tokensOnly}';
-    }
-    final pct = '%${(bar.pct * 100).round()}';
-    final resets = bar.resetsAt;
-    return '$seat · ${Tr.windowLabel(bar.window)} $pct'
-        '${resets == null ? '' : ' · ${Tr.resetsAt(resets)}'}';
   }
 
   /// The oldest pending permission request, as a balloon over its seat.
@@ -985,7 +1001,7 @@ class _DesktopStageState extends State<DesktopStage> {
       ),
       _BubbleKind.tv => TvBubble(
         key: _bubbleKey,
-        bars: usageBars(snapshot),
+        bars: DesktopStage.usageBars(snapshot),
         pointerX: pointerX,
         onClose: _closeBubble,
       ),

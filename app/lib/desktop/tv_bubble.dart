@@ -42,7 +42,11 @@ class TvBubble extends StatelessWidget {
         : '${Tr.seatName(bar.seat)} · ${Tr.windowLabel(bar.window)}';
     final value = bar.dim
         ? '${bar.tokens} ${Tr.tokensIn}'
-        : '%${(bar.pct * 100).round()}';
+        : bar.renewed
+        ? Tr.usageRenewed
+        : bar.known
+        ? '%${(bar.pct * 100).round()}'
+        : Tr.usageOk;
     final resets = bar.resetsAt;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -68,7 +72,7 @@ class TvBubble extends StatelessWidget {
                   : OfficeColors.usage(bar.pct),
             ),
           ),
-          if (resets != null && !bar.dim)
+          if (resets != null && !bar.dim && !bar.renewed)
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(Tr.resetsAt(resets), style: PixelText.faint),

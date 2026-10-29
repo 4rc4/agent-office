@@ -187,6 +187,8 @@ class UsageBar {
     this.resetsAt,
     this.dim = false,
     this.tokens = 0,
+    this.known = true,
+    this.renewed = false,
   });
 
   final Seat seat;
@@ -195,6 +197,13 @@ class UsageBar {
   final DateTime? resetsAt;
   final bool dim;
   final int tokens;
+
+  /// Whether [pct] is a real number. False when the CLI only said the
+  /// window is fine, or when the window has been [renewed] since.
+  final bool known;
+
+  /// The window's reset time has passed: the old number no longer holds.
+  final bool renewed;
 }
 
 /// Shadow on the floor under a prop or a character: two dithered ink rows
@@ -377,7 +386,10 @@ void _paintTv(
       final seatColor = bar.seat == Seat.gpt ? Palette.teal : Palette.orange;
       b.fill(sx + 1, y, 2, 3, seatColor);
       b.fill(sx + 4, y, 15, 3, Palette.slateShade);
-      final width = (bar.pct.clamp(0, 1) * 15).round();
+      // An unknown but fine window shows a short green stub.
+      final width = bar.known
+          ? (bar.pct.clamp(0, 1) * 15).round()
+          : (bar.renewed ? 0 : 2);
       final fill = bar.dim
           ? Palette.greyNoteDark
           : bar.pct < 0.7

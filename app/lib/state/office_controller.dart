@@ -101,6 +101,61 @@ String _shortLine(String text, {required String fallback, int max = 60}) {
 
 enum _Outcome { none, done, failed }
 
+/// [UsageSnapshot.usedPct] of a window the CLI called fine without giving a
+/// number: Claude reports utilization only past its warning line.
+const double usageUnknown = -1;
+
+/// The usage a `rate_limit_event` line ([raw]) reports for [seat]: window,
+/// percentage ([usageUnknown] without utilization) and reset time. Null
+/// when the line has no `rate_limit_info`.
+UsageSnapshot? usageFromRateLimit(
+  Seat seat,
+  Map<String, Object?> raw,
+  DateTime fetchedAt,
+) {
+  final info = raw['rate_limit_info'];
+  if (info is! Map) return null;
+  final utilization = info['utilization'];
+  final resets = info['resetsAt'];
+  final window = info['rateLimitType'];
+  return UsageSnapshot(
+    seat: seat,
+    window: window is String && window.isNotEmpty ? window : 'unknown',
+    usedPct: utilization is num ? utilization * 100 : usageUnknown,
+    resetsAt: resets is num
+        ? DateTime.fromMillisecondsSinceEpoch(
+            (resets * 1000).round(),
+            isUtc: true,
+          )
+        : null,
+    source: 'claude-cli',
+    fetchedAt: fetchedAt,
+  );
+}
+
+/// The newest usage per seat and window from board rate-limit [events]
+/// (newest first, as `TaskBoard.listEvents` returns them).
+List<UsageSnapshot> usageFromEvents(List<BoardEvent> events) {
+  final seen = <String>{};
+  final usage = <UsageSnapshot>[];
+  for (final event in events) {
+    final seatName = event.seat;
+    if (seatName == null) continue;
+    final Seat seat;
+    try {
+      seat = Seat.parse(seatName);
+    } on Object {
+      continue;
+    }
+    final parsed = usageFromRateLimit(seat, event.raw, event.createdAt);
+    if (parsed == null || !seen.add('${seat.name}/${parsed.window}')) {
+      continue;
+    }
+    usage.add(parsed);
+  }
+  return usage;
+}
+
 class _HeldPrompt {
   const _HeldPrompt(this.prompt, this.directSeat, this.cwd, this.options);
 
@@ -143,6 +198,7 @@ class OfficeController extends OfficeModel {
             : SeatVisual.empty,
       );
     }
+    _backfillUsage();
     _snapshot = _build();
     _eventSubscription = supervisor.events.listen(_onEvent);
     _changeSubscription = board.changes.listen(_onTaskChanged);
@@ -468,29 +524,30 @@ class OfficeController extends OfficeModel {
   /// Stores a `rate_limit_event`'s window, utilization and reset time on
   /// the board (one row per seat and window).
   void _recordUsage(AgentEvent event) {
-    final info = event.raw['rate_limit_info'];
-    if (info is! Map || _stopped) return;
-    final utilization = info['utilization'];
-    final resets = info['resetsAt'];
-    final window = info['rateLimitType'];
+    if (_stopped) return;
+    final usage = usageFromRateLimit(event.seat, event.raw, _clock());
+    if (usage == null) return;
     try {
-      board.recordUsage(
-        UsageSnapshot(
-          seat: event.seat,
-          window: window is String && window.isNotEmpty ? window : 'unknown',
-          usedPct: utilization is num ? utilization * 100 : 0,
-          resetsAt: resets is num
-              ? DateTime.fromMillisecondsSinceEpoch(
-                  (resets * 1000).round(),
-                  isUtc: true,
-                )
-              : null,
-          source: 'claude-cli',
-          fetchedAt: _clock(),
-        ),
-      );
+      board.recordUsage(usage);
     } on StateError {
       // The board was closed under us.
+    }
+  }
+
+  /// A board from before usage was stored still has the CLI's rate-limit
+  /// lines in its event log: the newest per seat and window seeds the TV.
+  void _backfillUsage() {
+    try {
+      if (Seat.values.any((s) => board.usageFor(s).isNotEmpty)) return;
+      final events = board.listEvents(
+        kind: AgentEventKind.rateLimit.name,
+        limit: 200,
+      );
+      for (final usage in usageFromEvents(events)) {
+        board.recordUsage(usage);
+      }
+    } on StateError {
+      // No board to read.
     }
   }
 

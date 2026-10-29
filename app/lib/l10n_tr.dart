@@ -56,6 +56,9 @@ abstract final class Tr {
   static const String noUsage =
       'Henüz limit bilgisi yok; Claude çalışınca gelir.';
   static const String tokensOnly = 'jeton';
+  static const String usageOk = 'sorun yok';
+  static const String usageRenewed = 'yenilendi';
+  static const String usagePending = 'Limitler ilk Claude görevinde gelir';
   static const String model = 'Model';
   static const String effort = 'Düşünme';
   static const String defaultChoice = 'Varsayılan';

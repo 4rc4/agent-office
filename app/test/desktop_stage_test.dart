@@ -11,6 +11,7 @@ import 'package:agent_office_app/desktop/settings_bubble.dart';
 import 'package:agent_office_app/desktop/stations.dart';
 import 'package:agent_office_app/desktop/task_bubble.dart';
 import 'package:agent_office_app/desktop/tv_bubble.dart';
+import 'package:agent_office_app/l10n_tr.dart';
 import 'package:agent_office_app/runtime/office_settings.dart';
 import 'package:agent_office_app/state/seat_state.dart';
 import 'package:flutter/gestures.dart';
@@ -22,6 +23,11 @@ import 'support/desktop_fixtures.dart';
 import 'support/fake_desktop_channel.dart';
 import 'support/fake_office_model.dart';
 import 'support/test_fonts.dart';
+
+final DateTime inTwoHours = DateTime.now().add(const Duration(hours: 2));
+
+String hhmm(DateTime t) =>
+    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
 void main() {
   late FakeDesktopChannel runner;
@@ -444,7 +450,7 @@ void main() {
               seat: Seat.claude,
               window: 'five_hour',
               usedPct: 42,
-              resetsAt: DateTime(2026, 10, 29, 14, 30),
+              resetsAt: inTwoHours,
               source: 'claude-cli',
               fetchedAt: DateTime(2026, 10, 29, 12),
             ),
@@ -459,7 +465,10 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: caption, matching: find.textContaining('14:30')),
+        find.descendant(
+          of: caption,
+          matching: find.textContaining(hhmm(inTwoHours)),
+        ),
         findsOneWidget,
       );
       // It sits under the TV and takes no clicks.
@@ -476,9 +485,14 @@ void main() {
       expect(caption, findsNothing);
     });
 
-    testWidgets('no usage yet: no TV caption', (tester) async {
+    testWidgets('no usage yet: the caption says when it comes', (tester) async {
       await pumpDesktop(tester, FakeOfficeModel());
-      expect(find.byKey(DesktopStage.tvCaptionKey), findsNothing);
+      final caption = find.byKey(DesktopStage.tvCaptionKey);
+      expect(caption, findsOneWidget);
+      expect(
+        find.descendant(of: caption, matching: find.text(Tr.usagePending)),
+        findsOneWidget,
+      );
     });
 
     testWidgets('tapping the TV lists the usage windows', (tester) async {
@@ -490,7 +504,7 @@ void main() {
               seat: Seat.claude,
               window: 'five_hour',
               usedPct: 42,
-              resetsAt: DateTime(2026, 10, 29, 14, 30),
+              resetsAt: inTwoHours,
               source: 'claude-cli',
               fetchedAt: DateTime(2026, 10, 29, 12),
             ),
@@ -502,7 +516,7 @@ void main() {
       expect(find.byType(TvBubble), findsOneWidget);
       expect(find.textContaining('5 saat'), findsOneWidget);
       expect(find.textContaining('%42'), findsOneWidget);
-      expect(find.textContaining('14:30'), findsOneWidget);
+      expect(find.textContaining(hhmm(inTwoHours)), findsOneWidget);
     });
   });
 }
