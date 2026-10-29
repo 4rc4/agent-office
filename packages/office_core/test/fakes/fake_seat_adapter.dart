@@ -134,6 +134,9 @@ class FakeAgentRun implements AgentRun {
   final FakeRunScript script;
   final _events = StreamController<AgentEvent>.broadcast();
   final List<String> sent = [];
+
+  /// Every [answerApproval] call as (request id, allow).
+  final List<(String, bool)> answers = [];
   var _turn = Completer<AgentResult>();
   var _turnIndex = 0;
   bool stopped = false;
@@ -153,6 +156,15 @@ class FakeAgentRun implements AgentRun {
     sent.add(userMessage);
     _turn = Completer<AgentResult>();
     _play();
+  }
+
+  @override
+  Future<void> answerApproval(
+    String requestId, {
+    required bool allow,
+    String? message,
+  }) async {
+    answers.add((requestId, allow));
   }
 
   @override

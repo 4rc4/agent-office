@@ -48,6 +48,68 @@ Future<String> gitDiffStat(String cwd) async {
 /// v1 policy: a successful attempt is auto-accepted (`review -> done`); a
 /// failed attempt is retried from scratch until [maxAttempts] is reached,
 /// then the task fails and anything depending on it fails as blocked.
+/// Records an `approvalRequested` event of [taskId] as a pending approval
+/// interaction (payload: request id, tool name, input, summary) and parks
+/// a running task in `waitingApproval`. Other events are ignored.
+Interaction? recordApprovalRequest(
+  TaskBoard board,
+  String taskId,
+  AgentEvent event,
+) {
+  if (event.kind != AgentEventKind.approvalRequested) return null;
+  final request = event.raw['request'];
+  final requestMap = request is Map
+      ? Map<String, Object?>.from(request)
+      : const <String, Object?>{};
+  final interaction = board.addInteraction(
+    taskId: taskId,
+    seat: event.seat,
+    kind: InteractionKind.approval,
+    payload: {
+      'request_id': event.raw['request_id'],
+      'tool_name': requestMap['tool_name'],
+      'input': requestMap['input'],
+      'summary': event.summary,
+    },
+  );
+  final task = board.getTask(taskId);
+  if (task != null && task.status == TaskStatus.running) {
+    board.transition(
+      taskId,
+      TaskStatus.waitingApproval,
+      note: 'permission: ${event.summary}',
+    );
+  }
+  return interaction;
+}
+
+/// Writes the user's answer to interaction [interaction] into [run] and
+/// closes the balloon; a task parked in `waitingApproval` runs again.
+Future<bool> answerApprovalOn(
+  TaskBoard board,
+  AgentRun run,
+  Interaction interaction, {
+  required bool allow,
+}) async {
+  final requestId = interaction.payload['request_id'];
+  if (requestId is! String) return false;
+  try {
+    await run.answerApproval(requestId, allow: allow);
+  } on Object {
+    return false;
+  }
+  board.answerInteraction(interaction.id, allow ? 'allow' : 'deny');
+  final task = board.getTask(interaction.taskId);
+  if (task != null && task.status == TaskStatus.waitingApproval) {
+    board.transition(
+      interaction.taskId,
+      TaskStatus.running,
+      note: allow ? 'permission granted' : 'permission denied',
+    );
+  }
+  return true;
+}
+
 class Dispatcher {
   Dispatcher({
     required this.board,
@@ -134,6 +196,9 @@ class Dispatcher {
     await _stopRun(run);
     return true;
   }
+
+  /// The live run of [taskId], if any.
+  AgentRun? runFor(String taskId) => _runs[taskId];
 
   static Future<void> _stopRun(AgentRun run) async {
     try {
@@ -283,6 +348,7 @@ class Dispatcher {
       result = AgentResult(success: false, error: '$error');
     }
     _runs.remove(dispatched.id);
+    _lapsePermission(dispatched.id);
     try {
       await run.stop();
     } on Object {
@@ -302,6 +368,20 @@ class Dispatcher {
       await _succeeded(dispatched, token, result);
     } else {
       _failedAttempt(dispatched, token, result.error ?? 'unknown error');
+    }
+  }
+
+  /// The turn ended while a permission balloon was still up: the CLI
+  /// resolved it on its own, so the balloon expires and a parked task runs
+  /// again for its completion transition.
+  void _lapsePermission(String taskId) {
+    board.expireInteractions(taskId);
+    if (board.getTask(taskId)?.status == TaskStatus.waitingApproval) {
+      board.transition(
+        taskId,
+        TaskStatus.running,
+        note: 'permission request lapsed with the turn',
+      );
     }
   }
 
@@ -328,6 +408,7 @@ class Dispatcher {
   void _forward(TaskRecord task, AgentEvent event, AgentRun run) {
     final stamped = withTaskId(event, task.id);
     board.recordEvent(stamped);
+    recordApprovalRequest(board, task.id, stamped);
     switch (event.kind) {
       case AgentEventKind.sessionStarted:
         final ref = event.sessionRef ?? run.sessionRef;

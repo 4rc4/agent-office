@@ -577,6 +577,17 @@ ON CONFLICT(task_id) DO UPDATE SET seat = excluded.seat,
     return _interactionById(id);
   }
 
+  /// Marks every pending balloon of [taskId] `expired` (the attempt ended
+  /// without an answer). Returns how many were closed.
+  int expireInteractions(String taskId) {
+    _db.execute(
+      "UPDATE interactions SET status = 'expired' "
+      "WHERE task_id = ? AND status = 'pending'",
+      [taskId],
+    );
+    return _db.updatedRows;
+  }
+
   /// Every balloon still waiting for the user, oldest first.
   List<Interaction> pendingInteractions({String? taskId}) {
     final rows = _db.select(

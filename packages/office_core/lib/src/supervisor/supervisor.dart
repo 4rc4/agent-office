@@ -163,6 +163,23 @@ class Supervisor {
     return true;
   }
 
+  /// Answers the pending approval [interactionId] (see
+  /// `TaskBoard.pendingInteractions`): the run that asked gets the
+  /// response and the balloon closes. False when nothing is pending under
+  /// that id or its run is gone.
+  Future<bool> answerApproval(int interactionId, {required bool allow}) async {
+    final interaction = board
+        .pendingInteractions()
+        .where((i) => i.id == interactionId)
+        .firstOrNull;
+    if (interaction == null) return false;
+    final run =
+        _brains[interaction.taskId]?.run ??
+        dispatcher.runFor(interaction.taskId);
+    if (run == null) return false;
+    return answerApprovalOn(board, run, interaction, allow: allow);
+  }
+
   /// First line of [prompt], at most 60 characters.
   static String directTitle(String prompt) {
     final line = prompt.trim().split(RegExp(r'\r?\n')).first.trim();
@@ -409,6 +426,9 @@ class _Brain {
 
   TaskBoard get _board => supervisor.board;
 
+  /// The live run, for permission answers.
+  AgentRun? get run => _run;
+
   /// Sends [message] as the next turn and waits for the reply. A run whose
   /// `send` fails, or whose process exits under the turn without a result
   /// (idle close, kill, crash), is replaced once by a new run that resumes
@@ -453,6 +473,14 @@ class _Brain {
       result = AgentResult(success: false, error: '$error');
     }
     _board.setTurnState(root.id, TurnState.idle);
+    _board.expireInteractions(root.id);
+    if (_board.requireTask(root.id).status == TaskStatus.waitingApproval) {
+      _board.transition(
+        root.id,
+        TaskStatus.running,
+        note: 'permission request lapsed with the turn',
+      );
+    }
     return result;
   }
 
@@ -465,6 +493,7 @@ class _Brain {
     final run = _run;
     _run = null;
     if (run == null) return;
+    _board.expireInteractions(root.id);
     try {
       await run.stop(
         grace: byUser ? Dispatcher.userStopGrace : const Duration(seconds: 20),
@@ -511,6 +540,7 @@ class _Brain {
     }
     final stamped = withTaskId(event, root.id);
     _board.recordEvent(stamped);
+    recordApprovalRequest(_board, root.id, stamped);
     supervisor._emit(stamped);
   }
 }

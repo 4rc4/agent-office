@@ -114,6 +114,8 @@ class ClaudeAdapter implements SeatAdapter {
       '--include-partial-messages',
       '--permission-mode',
       permissionMode,
+      '--permission-prompt-tool',
+      'stdio',
       if (resumeRef != null) ...['--resume', resumeRef],
       if (resumeRef == null) ...[
         '--session-id',
@@ -180,6 +182,27 @@ class ClaudeAdapter implements SeatAdapter {
         'content': [
           {'type': 'text', 'text': text},
         ],
+      },
+    });
+  }
+
+  /// One stream-json input line answering `control_request` [requestId]:
+  /// allow (echoing [input] as `updatedInput`, the shape the CLI expects)
+  /// or deny with [message].
+  static String encodeControlResponse(
+    String requestId, {
+    required bool allow,
+    Map<String, Object?> input = const {},
+    String? message,
+  }) {
+    return jsonEncode({
+      'type': 'control_response',
+      'response': {
+        'subtype': 'success',
+        'request_id': requestId,
+        'response': allow
+            ? {'behavior': 'allow', 'updatedInput': input}
+            : {'behavior': 'deny', 'message': message ?? 'Denied by the user'},
       },
     });
   }
@@ -254,6 +277,10 @@ class ClaudeRun implements AgentRun {
   int? _exitCode;
   String? _sessionRef;
 
+  /// Tool inputs of the permission requests still waiting for an answer,
+  /// by request id (`updatedInput` echoes them back on allow).
+  final Map<String, Map<String, Object?>> _pendingApprovals = {};
+
   /// The task this run works on.
   final String taskId;
 
@@ -294,6 +321,29 @@ class ClaudeRun implements AgentRun {
     }
     _turn = Completer<AgentResult>();
     _process.writeLine(ClaudeAdapter.encodeUserMessage(userMessage));
+  }
+
+  @override
+  Future<void> answerApproval(
+    String requestId, {
+    required bool allow,
+    String? message,
+  }) async {
+    final input = _pendingApprovals.remove(requestId);
+    if (input == null) {
+      throw StateError('no pending permission request $requestId');
+    }
+    if (_exited) {
+      throw StateError('Claude process already exited (code $_exitCode)');
+    }
+    _process.writeLine(
+      ClaudeAdapter.encodeControlResponse(
+        requestId,
+        allow: allow,
+        input: input,
+        message: message,
+      ),
+    );
   }
 
   @override
@@ -341,6 +391,15 @@ class ClaudeRun implements AgentRun {
           }
         case AgentEventKind.turnCompleted || AgentEventKind.turnFailed:
           _completeTurn(_parser.resultFrom(event.raw));
+        case AgentEventKind.approvalRequested:
+          final id = event.raw['request_id'];
+          final request = event.raw['request'];
+          if (id is String && request is Map) {
+            final input = request['input'];
+            _pendingApprovals[id] = input is Map
+                ? Map<String, Object?>.from(input)
+                : const {};
+          }
         default:
           break;
       }

@@ -18,6 +18,8 @@ const _baseArguments = [
   '--include-partial-messages',
   '--permission-mode',
   'acceptEdits',
+  '--permission-prompt-tool',
+  'stdio',
 ];
 
 List<String> fixtureLines(String name) {
@@ -160,6 +162,8 @@ void main() {
         '--include-partial-messages',
         '--permission-mode',
         'auto',
+        '--permission-prompt-tool',
+        'stdio',
         '--session-id',
         _fixedSessionId,
         '--append-system-prompt-file',

@@ -272,6 +272,15 @@ class CodexRun implements AgentRun {
 
   /// Codex exec takes one prompt per process; a follow-up is a new run.
   @override
+  Future<void> answerApproval(
+    String requestId, {
+    required bool allow,
+    String? message,
+  }) async {
+    throw UnsupportedError('codex exec raises no permission prompts');
+  }
+
+  @override
   Future<void> send(String userMessage) async {
     throw UnsupportedError(
       'codex exec takes one prompt per process; '

@@ -42,6 +42,15 @@ abstract class AgentRun {
 
   /// Polite stop (close stdin), then hard kill after [grace].
   Future<void> stop({Duration grace = const Duration(seconds: 20)});
+
+  /// Answers the permission request [requestId] the run raised as an
+  /// `approvalRequested` event. Codex runs have none and throw
+  /// [UnsupportedError].
+  Future<void> answerApproval(
+    String requestId, {
+    required bool allow,
+    String? message,
+  });
 }
 
 /// One vendor CLI behind one desk. Implementations only launch the user's
