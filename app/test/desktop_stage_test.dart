@@ -1,9 +1,11 @@
+import 'package:agent_office_app/desktop/approval_bubble.dart';
 import 'package:agent_office_app/desktop/autostart.dart';
 import 'package:agent_office_app/desktop/desktop_app.dart';
 import 'package:agent_office_app/desktop/desktop_layer.dart';
 import 'package:agent_office_app/desktop/desktop_stage.dart';
 import 'package:agent_office_app/desktop/info_bubbles.dart';
 import 'package:agent_office_app/desktop/notice_bubble.dart';
+import 'package:agent_office_app/desktop/open_external.dart';
 import 'package:agent_office_app/desktop/prompt_bubble.dart';
 import 'package:agent_office_app/desktop/settings_bubble.dart';
 import 'package:agent_office_app/desktop/stations.dart';
@@ -243,6 +245,87 @@ void main() {
         expect(find.byType(WhiteboardBubble), findsOneWidget);
       },
     );
+
+    testWidgets('a permission request shows a balloon; İzin ver answers it', (
+      tester,
+    ) async {
+      final snapshot = workingSnapshot();
+      final model = FakeOfficeModel(
+        snapshot: OfficeSnapshot(
+          seats: snapshot.seats,
+          tasks: snapshot.tasks,
+          busy: true,
+          approvals: const [
+            ApprovalRequest(
+              id: 7,
+              taskId: 's1',
+              seat: Seat.gpt,
+              summary: 'approval: Bash: rm -rf build',
+            ),
+          ],
+        ),
+      );
+      await pumpDesktop(tester, model);
+      expect(find.byType(ApprovalBubble), findsOneWidget);
+      expect(find.textContaining('rm -rf build'), findsOneWidget);
+      expect(runner.methods, contains('peek'));
+      await tester.tap(find.byKey(ApprovalBubble.allowKey));
+      await tester.pump();
+      expect(model.answers, [(7, true)]);
+    });
+
+    testWidgets('Ctrl+Alt+Space from the runner opens the Claude bubble', (
+      tester,
+    ) async {
+      await pumpDesktop(tester, FakeOfficeModel());
+      await runner.callDart('hotkey');
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(PromptBubble), findsOneWidget);
+      expect(find.text('Ne yapalım?'), findsOneWidget);
+      expect(runner.methods, contains('bringToFront'));
+    });
+
+    testWidgets('the mailbox opens the report folder and the editor', (
+      tester,
+    ) async {
+      final launches = <(String, List<String>)>[];
+      final model = FakeOfficeModel(snapshot: workingSnapshot());
+      await pumpDesktop(
+        tester,
+        model,
+        openExternal: OpenExternal(
+          launch: (exe, args) async => launches.add((exe, args)),
+          resolve: (name) => r'C:\tools\code.cmd',
+        ),
+      );
+      await tapStation(tester, StationKind.mailbox);
+      await tester.tap(find.byKey(MailboxBubble.openFolderKey));
+      await tester.pump();
+      await tester.tap(find.byKey(MailboxBubble.openEditorKey));
+      await tester.pump();
+      expect(
+        [for (final l in launches) '${l.$1} ${l.$2.join(' ')}'],
+        ['explorer.exe $otherFolder', r'C:\tools\code.cmd ' + otherFolder],
+      );
+    });
+
+    testWidgets('without VS Code on PATH the editor button is absent', (
+      tester,
+    ) async {
+      final model = FakeOfficeModel(snapshot: workingSnapshot());
+      await pumpDesktop(
+        tester,
+        model,
+        openExternal: OpenExternal(
+          launch: (_, _) async {},
+          resolve: (name) => null,
+        ),
+      );
+      await tapStation(tester, StationKind.mailbox);
+      expect(find.byKey(MailboxBubble.openFolderKey), findsOneWidget);
+      expect(find.byKey(MailboxBubble.openEditorKey), findsNothing);
+    });
 
     testWidgets('the mailbox shows the letter, marks it read and copies', (
       tester,

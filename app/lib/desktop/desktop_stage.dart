@@ -15,10 +15,12 @@ import '../state/seat_state.dart';
 import 'autostart.dart';
 import 'bubble_sheet.dart';
 import 'desktop_layer.dart';
+import 'approval_bubble.dart';
 import 'desktop_painter.dart';
 import 'info_bubbles.dart';
 import 'model_choices.dart';
 import 'notice_bubble.dart';
+import 'open_external.dart';
 import 'office_actors.dart';
 import 'prompt_bubble.dart';
 import 'settings_bubble.dart';
@@ -85,6 +87,7 @@ class DesktopStage extends StatefulWidget {
     this.autostart = const NoAutostart(),
     this.initialWallpaper,
     this.pickFiles,
+    this.openExternal,
     this.windowed = false,
     this.animate = true,
   });
@@ -108,6 +111,9 @@ class DesktopStage extends StatefulWidget {
 
   /// How long the report notice stays over the mailbox.
   static const Duration noticeDuration = Duration(seconds: 15);
+
+  /// How long a permission balloon is held over other windows.
+  static const Duration approvalPeek = Duration(minutes: 2);
 
   /// Clock period while something moves.
   static const Duration tickPeriod = Duration(milliseconds: 100);
@@ -133,6 +139,9 @@ class DesktopStage extends StatefulWidget {
   /// Picks files to attach to a prompt; null uses the native picker
   /// (`openFiles`). Tests inject a fake.
   final Future<List<String>> Function()? pickFiles;
+
+  /// Opens report folders in Explorer / VS Code; null builds the real one.
+  final OpenExternal? openExternal;
 
   /// Plain window fallback (`--window`): dark background, no wallpaper.
   final bool windowed;
@@ -161,6 +170,9 @@ class _DesktopStageState extends State<DesktopStage> {
       _settings.recentFolders.firstOrNull ?? widget.model.cwd;
   final GlobalKey _bubbleKey = GlobalKey();
   final GlobalKey _noticeKey = GlobalKey();
+  final GlobalKey _approvalKey = GlobalKey();
+  late final OpenExternal _external = widget.openExternal ?? OpenExternal();
+  int? _peekedApproval;
   OfficeReport? _notice;
   Timer? _noticeTimer;
   String? _noticedRootId;
@@ -175,6 +187,8 @@ class _DesktopStageState extends State<DesktopStage> {
     widget.model.addListener(_onModel);
     widget.commands?.addListener(_onCommand);
     widget.layer.onFocusLost = _closeBubble;
+    widget.layer.onHotkey = _onHotkey;
+    _watchApprovals(widget.model.snapshot);
     if (!widget.windowed && widget.animate) {
       _wallpaperClock = Timer.periodic(
         DesktopStage.wallpaperPollPeriod,
@@ -203,6 +217,9 @@ class _DesktopStageState extends State<DesktopStage> {
     if (widget.layer.onFocusLost == _closeBubble) {
       widget.layer.onFocusLost = null;
     }
+    if (widget.layer.onHotkey == _onHotkey) {
+      widget.layer.onHotkey = null;
+    }
     _clock?.cancel();
     _wake?.cancel();
     _noticeTimer?.cancel();
@@ -221,6 +238,7 @@ class _DesktopStageState extends State<DesktopStage> {
       choreo.apply(snapshot);
       if (!widget.animate) choreo.settle();
     }
+    _watchApprovals(snapshot);
     final latest = snapshot.reports.firstOrNull;
     if (latest != null &&
         snapshot.unreadReports > 0 &&
@@ -230,6 +248,17 @@ class _DesktopStageState extends State<DesktopStage> {
     }
     if (mounted) setState(() {});
     _syncClock();
+  }
+
+  /// A new permission request peeks the layer over other windows so its
+  /// balloon is seen, unless a bubble already holds the layer in front.
+  void _watchApprovals(OfficeSnapshot snapshot) {
+    final approval = snapshot.approvals.firstOrNull;
+    if (approval == null || approval.id == _peekedApproval) return;
+    _peekedApproval = approval.id;
+    if (_bubble == null) {
+      unawaited(widget.layer.peek(DesktopStage.approvalPeek));
+    }
   }
 
   /// Pops the report card over the mailbox for [DesktopStage.noticeDuration]
@@ -249,6 +278,16 @@ class _DesktopStageState extends State<DesktopStage> {
     _noticeTimer = null;
     if (_notice == null || !mounted) return;
     setState(() => _notice = null);
+  }
+
+  /// Ctrl+Alt+Space: Claude's bubble, or close what is open.
+  void _onHotkey() {
+    if (!mounted) return;
+    if (_bubble != null) {
+      _closeBubble();
+      return;
+    }
+    _tapActor(Seat.claude);
   }
 
   void _tapNotice() {
@@ -460,13 +499,14 @@ class _DesktopStageState extends State<DesktopStage> {
 
     final bubble = boxOf(_bubbleKey);
     final notice = _notice == null ? null : boxOf(_noticeKey);
+    final approval = boxOf(_approvalKey);
     final List<Rect> all;
-    if (notice != null && bubble == null) {
+    if (notice != null && bubble == null && approval == null) {
       // While the notice peeks over other windows only it and the mailbox
       // take the mouse; the rest of the office stays behind the icons.
       all = [_layout!.rect(StationKind.mailbox).inflate(4), notice];
     } else {
-      all = [for (final r in rects) r.inflate(4), ?bubble, ?notice];
+      all = [for (final r in rects) r.inflate(4), ?bubble, ?notice, ?approval];
     }
     if (_sameRects(all, _reportedRects)) return;
     _reportedRects = all;
@@ -675,11 +715,41 @@ class _DesktopStageState extends State<DesktopStage> {
               ),
             ),
           ),
+        if (snapshot.approvals.isNotEmpty)
+          _approvalWidget(size, snapshot.approvals.first, actorRects),
         if (_notice != null)
           _noticeWidget(size, _notice!, stationRects[StationKind.mailbox]!),
         if (_bubble != null)
           _bubbleWidget(size, _bubble!, snapshot, stationRects, actorRects),
       ],
+    );
+  }
+
+  /// The oldest pending permission request, as a balloon over its seat.
+  Widget _approvalWidget(
+    Size size,
+    ApprovalRequest request,
+    Map<Seat, Rect> actorRects,
+  ) {
+    final layout = _layout!;
+    final anchor =
+        actorRects[request.seat] ??
+        Rect.fromLTWH(layout.userSpotX - 1, layout.floorY - 96, 2, 96);
+    const margin = 16.0;
+    final width = ApprovalBubble.width.clamp(0.0, size.width - 2 * margin);
+    final tipX = anchor.center.dx;
+    final left = (tipX - width / 2).clamp(margin, size.width - width - margin);
+    return Positioned(
+      left: left,
+      bottom: size.height - (anchor.top - BubbleSheet.pointerHeight / 4),
+      width: width,
+      child: ApprovalBubble(
+        key: _approvalKey,
+        request: request,
+        pointerX: (tipX - left) / width,
+        onAnswer: (allow) =>
+            unawaited(widget.model.answerApproval(request.id, allow: allow)),
+      ),
     );
   }
 
@@ -823,6 +893,10 @@ class _DesktopStageState extends State<DesktopStage> {
         reports: snapshot.reports,
         pointerX: pointerX,
         onClose: _closeBubble,
+        onOpenFolder: (r) => unawaited(_external.openFolder(r.cwd)),
+        onOpenEditor: _external.editorAvailable
+            ? (r) => unawaited(_external.openInEditor(r.cwd))
+            : null,
       ),
       _BubbleKind.tv => TvBubble(
         key: _bubbleKey,

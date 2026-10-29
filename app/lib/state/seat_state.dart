@@ -184,6 +184,25 @@ class TaskSnapshot {
       );
 }
 
+/// A permission request a CLI raised and nobody has answered yet; the
+/// stage shows it as a balloon over the character.
+class ApprovalRequest {
+  const ApprovalRequest({
+    required this.id,
+    required this.taskId,
+    required this.seat,
+    required this.summary,
+  });
+
+  /// The board's interaction id, what `answerApproval` takes.
+  final int id;
+  final String taskId;
+  final Seat seat;
+
+  /// What the tool wants to do, e.g. `approval: Bash: rm -rf build`.
+  final String summary;
+}
+
 /// One finished root's report, as the mailbox keeps it.
 class OfficeReport {
   const OfficeReport({
@@ -219,6 +238,7 @@ class OfficeSnapshot {
     this.paused = false,
     this.statusLine = '',
     this.usage = const [],
+    this.approvals = const [],
   });
 
   /// One entry per [Seat], in Seat.values order.
@@ -250,6 +270,9 @@ class OfficeSnapshot {
   /// Latest rate-limit usage per seat and window, from the CLIs; the TV
   /// shows it.
   final List<UsageSnapshot> usage;
+
+  /// Permission requests waiting for the user, oldest first.
+  final List<ApprovalRequest> approvals;
 
   SeatSnapshot seat(Seat seat) => seats.firstWhere((s) => s.seat == seat);
 

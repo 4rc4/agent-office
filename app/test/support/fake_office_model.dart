@@ -107,4 +107,12 @@ class FakeOfficeModel extends ChangeNotifier implements OfficeModel {
     steered.add((taskId, note));
     return true;
   }
+
+  final answers = <(int, bool)>[];
+
+  @override
+  Future<bool> answerApproval(int interactionId, {required bool allow}) async {
+    answers.add((interactionId, allow));
+    return true;
+  }
 }

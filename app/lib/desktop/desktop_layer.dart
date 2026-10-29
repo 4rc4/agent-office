@@ -15,7 +15,7 @@ import 'wallpaper.dart';
 ///
 /// Rectangles and sizes cross the channel in physical screen pixels.
 class DesktopLayer {
-  DesktopLayer({MethodChannel? channel, this.onFocusLost})
+  DesktopLayer({MethodChannel? channel, this.onFocusLost, this.onHotkey})
     : channel = channel ?? defaultChannel {
     this.channel.setMethodCallHandler(_onRunnerCall);
   }
@@ -30,6 +30,9 @@ class DesktopLayer {
   /// Called when the runner reports that the layer lost the foreground while
   /// it was pinned in front (a bubble was open). The stage sets it.
   VoidCallback? onFocusLost;
+
+  /// Called when the runner's global hotkey (Ctrl+Alt+Space) fired.
+  VoidCallback? onHotkey;
 
   /// Re-parents the window under the WorkerW behind the desktop icons and
   /// starts the runner's cursor watch. Returns true when the window is
@@ -99,6 +102,7 @@ class DesktopLayer {
 
   Future<Object?> _onRunnerCall(MethodCall call) async {
     if (call.method == 'focusLost') onFocusLost?.call();
+    if (call.method == 'hotkey') onHotkey?.call();
     return null;
   }
 }

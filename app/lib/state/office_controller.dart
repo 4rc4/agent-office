@@ -454,6 +454,17 @@ class OfficeController extends OfficeModel {
     return supervisor.steerTask(taskId, note);
   }
 
+  @override
+  Future<bool> answerApproval(int interactionId, {required bool allow}) async {
+    if (_disposed || _stopped) return false;
+    final answered = await supervisor.answerApproval(
+      interactionId,
+      allow: allow,
+    );
+    _markDirty();
+    return answered;
+  }
+
   /// Stores a `rate_limit_event`'s window, utilization and reset time on
   /// the board (one row per seat and window).
   void _recordUsage(AgentEvent event) {
@@ -622,6 +633,16 @@ class OfficeController extends OfficeModel {
       paused: _paused,
       statusLine: _statusLine(open, seats),
       usage: [for (final seat in Seat.values) ...board.usageFor(seat)],
+      approvals: [
+        for (final i in board.pendingInteractions())
+          if (i.kind == InteractionKind.approval)
+            ApprovalRequest(
+              id: i.id,
+              taskId: i.taskId,
+              seat: i.seat,
+              summary: i.payload['summary'] as String? ?? '',
+            ),
+      ],
     );
   }
 

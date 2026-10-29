@@ -50,4 +50,9 @@ abstract class OfficeModel extends ChangeNotifier {
   /// Hands [note] to one task: its session continues with it (a Codex
   /// task restarts with the note). False when unknown or done.
   Future<bool> steerTask(String taskId, String note) async => false;
+
+  /// Answers the permission request [interactionId] (see
+  /// [OfficeSnapshot.approvals]). False when it is no longer pending.
+  Future<bool> answerApproval(int interactionId, {required bool allow}) async =>
+      false;
 }

@@ -7,6 +7,7 @@ import '../widgets/office_theme.dart';
 import 'autostart.dart';
 import 'desktop_layer.dart';
 import 'desktop_stage.dart';
+import 'open_external.dart';
 import 'wallpaper.dart';
 
 /// The desktop-mode app: a [MaterialApp] (for the text field, buttons and
@@ -24,6 +25,7 @@ class DesktopApp extends StatelessWidget {
     this.autostart = const NoAutostart(),
     this.wallpaper,
     this.pickFiles,
+    this.openExternal,
     this.windowed = false,
     this.animate = true,
   });
@@ -41,6 +43,9 @@ class DesktopApp extends StatelessWidget {
 
   /// Replaces the native file picker, see [DesktopStage.pickFiles].
   final Future<List<String>> Function()? pickFiles;
+
+  /// Opens report folders; null builds the real launcher.
+  final OpenExternal? openExternal;
   final bool windowed;
   final bool animate;
 
@@ -63,6 +68,7 @@ class DesktopApp extends StatelessWidget {
         autostart: autostart,
         initialWallpaper: wallpaper,
         pickFiles: pickFiles,
+        openExternal: openExternal,
         windowed: windowed,
         animate: animate,
       ),

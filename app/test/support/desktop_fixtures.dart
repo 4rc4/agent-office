@@ -1,5 +1,6 @@
 import 'package:agent_office_app/desktop/desktop_app.dart';
 import 'package:agent_office_app/desktop/desktop_layer.dart';
+import 'package:agent_office_app/desktop/open_external.dart';
 import 'package:agent_office_app/runtime/office_settings.dart';
 import 'package:agent_office_app/state/seat_state.dart';
 import 'package:flutter/material.dart';
@@ -106,6 +107,7 @@ Future<void> pumpDesktop(
   ValueChanged<OfficeSettings>? onSettingsChanged,
   OfficeSettings settings = testSettings,
   Future<List<String>> Function()? pickFiles,
+  OpenExternal? openExternal,
 }) async {
   tester.view.physicalSize = size * dpr;
   tester.view.devicePixelRatio = dpr;
@@ -117,6 +119,7 @@ Future<void> pumpDesktop(
       settings: settings,
       onSettingsChanged: onSettingsChanged,
       pickFiles: pickFiles,
+      openExternal: openExternal,
       windowed: windowed,
       animate: false,
     ),

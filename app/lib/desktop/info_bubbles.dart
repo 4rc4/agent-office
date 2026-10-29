@@ -215,15 +215,23 @@ class MailboxBubble extends StatefulWidget {
     super.key,
     required this.reports,
     required this.onClose,
+    this.onOpenFolder,
+    this.onOpenEditor,
     this.pointerX = 0.5,
   });
 
   static const Key copyButtonKey = Key('bubble.copy');
   static const Key letterKey = Key('bubble.letter');
+  static const Key openFolderKey = Key('bubble.openFolder');
+  static const Key openEditorKey = Key('bubble.openEditor');
 
   /// Newest first.
   final List<OfficeReport> reports;
   final VoidCallback onClose;
+
+  /// "Klasörü aç" / "VS Code" for the shown report; null hides the button.
+  final ValueChanged<OfficeReport>? onOpenFolder;
+  final ValueChanged<OfficeReport>? onOpenEditor;
   final double pointerX;
 
   @override
@@ -283,6 +291,31 @@ class _MailboxBubbleState extends State<MailboxBubble> {
                     ),
                   ),
                 ),
+                if (report.cwd.isNotEmpty &&
+                    (widget.onOpenFolder != null ||
+                        widget.onOpenEditor != null)) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      if (widget.onOpenFolder != null)
+                        SheetButton(
+                          key: MailboxBubble.openFolderKey,
+                          label: Tr.openFolder,
+                          icon: Icons.folder_open_rounded,
+                          onPressed: () => widget.onOpenFolder!(report),
+                        ),
+                      if (widget.onOpenEditor != null)
+                        SheetButton(
+                          key: MailboxBubble.openEditorKey,
+                          label: Tr.openEditor,
+                          icon: Icons.code_rounded,
+                          onPressed: () => widget.onOpenEditor!(report),
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Row(
                   children: [

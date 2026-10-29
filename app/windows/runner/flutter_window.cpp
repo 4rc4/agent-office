@@ -15,6 +15,9 @@ namespace {
 
 constexpr char kDesktopChannel[] = "agent_office/desktop";
 
+// Ctrl+Alt+Space opens Claude's prompt bubble from anywhere.
+constexpr int kHotkeyId = 0x4F48;
+
 flutter::EncodableValue RectValue(const RECT& rect) {
   return flutter::EncodableValue(flutter::EncodableList{
       flutter::EncodableValue(static_cast<int32_t>(rect.left)),
@@ -58,6 +61,8 @@ bool FlutterWindow::OnCreate() {
                  result) { HandleDesktopCall(call, std::move(result)); });
   if (IsLayer()) {
     desktop_layer_ = std::make_unique<DesktopLayer>(GetHandle());
+    RegisterHotKey(GetHandle(), kHotkeyId, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT,
+                   VK_SPACE);
   }
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -73,6 +78,9 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  if (desktop_layer_) {
+    UnregisterHotKey(GetHandle(), kHotkeyId);
+  }
   if (desktop_channel_) {
     desktop_channel_->SetMethodCallHandler(nullptr);
     desktop_channel_ = nullptr;
@@ -182,6 +190,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       }
       if (desktop_layer_ && wparam == DesktopLayer::kPeekTimerId) {
         desktop_layer_->EndPeek();
+        return 0;
+      }
+      break;
+    case WM_HOTKEY:
+      if (desktop_channel_ && static_cast<int>(wparam) == kHotkeyId) {
+        desktop_channel_->InvokeMethod("hotkey", nullptr);
         return 0;
       }
       break;
