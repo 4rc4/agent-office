@@ -242,6 +242,7 @@ class Harness {
 }
 
 void main() {
+  concurrentRootTests();
   group('visualForEvent', () {
     test('maps every kind', () {
       SeatVisual? of(
@@ -443,7 +444,6 @@ void main() {
       expect(h.controller.isBusy, isTrue);
       expect(h.controller.snapshot.statusLine, 'GPT çalışıyor: Run the tests');
       expect(h.controller.snapshot.tasks.where((t) => t.isRoot), hasLength(1));
-      await expectLater(h.controller.submit('again'), throwsStateError);
 
       await h.waitIdle();
       expect(dedupe(h.visuals[Seat.gpt]!), [
@@ -748,6 +748,72 @@ void main() {
       expect(h.seat(Seat.claude).visual, SeatVisual.empty);
       await h.controller.stopAll();
       expect(stops, 1, reason: 'second stop is a no-op');
+    });
+  });
+}
+
+// ---------------------------------------------------- concurrent roots
+
+void concurrentRootTests() {
+  group('OfficeController, several roots', () {
+    test('two direct roots run at once, each in its own folder', () async {
+      final h = Harness({
+        Seat.claude: ScriptedAdapter(Seat.claude, [
+          [
+            ScriptedTurn.success('claude says hi', [
+              ev(Seat.claude, AgentEventKind.textDelta, summary: 'hi'),
+            ]),
+          ],
+        ]),
+        Seat.gpt: ScriptedAdapter(Seat.gpt, [
+          [
+            ScriptedTurn.success('gpt fixed it', [
+              ev(Seat.gpt, AgentEventKind.toolStarted, summary: 'bash'),
+            ]),
+          ],
+        ]),
+      });
+      await h.controller.submit('Fix /a', directSeat: Seat.gpt, cwd: '/a');
+      expect(h.controller.snapshot.busy, isTrue);
+      // A second root while the first is open: accepted, not refused.
+      await h.controller.submit('Fix /b', directSeat: Seat.claude, cwd: '/b');
+      final roots = h.controller.snapshot.tasks.where((t) => t.isRoot);
+      expect(roots.map((t) => t.cwd).toSet(), {'/a', '/b'});
+      expect(
+        h.board.listNonTerminal().where((t) => t.kind == TaskKind.root),
+        hasLength(2),
+      );
+      await h.waitIdle();
+      final reports = h.controller.snapshot.reports;
+      expect(reports, hasLength(2));
+      expect(reports.map((r) => r.cwd).toSet(), {'/a', '/b'});
+      expect(reports.map((r) => r.text).toSet(), {
+        'claude says hi',
+        'gpt fixed it',
+      });
+      expect(reports.every((r) => !r.failed), isTrue);
+      expect(h.controller.snapshot.unreadReports, 2);
+      expect(h.controller.snapshot.lastReport, reports.first.text);
+      h.controller.markReportsRead();
+      await Future<void>.delayed(Duration.zero);
+      expect(h.controller.snapshot.unreadReports, 0);
+      expect(h.controller.snapshot.reports, hasLength(2));
+    });
+
+    test('two roots for one desk: the second waits for the seat', () async {
+      final h = Harness({
+        Seat.gpt: ScriptedAdapter(Seat.gpt, [
+          [ScriptedTurn.success('first')],
+          [ScriptedTurn.success('second')],
+        ]),
+      });
+      await h.controller.submit('One', directSeat: Seat.gpt, cwd: '/one');
+      await h.controller.submit('Two', directSeat: Seat.gpt, cwd: '/two');
+      await h.waitIdle();
+      final reports = h.controller.snapshot.reports;
+      expect(reports.map((r) => r.title), ['Two', 'One']);
+      expect(reports.map((r) => r.text), ['second', 'first']);
+      expect(h.seat(Seat.gpt).xp, 20);
     });
   });
 }

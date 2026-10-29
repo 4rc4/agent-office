@@ -2,13 +2,14 @@
 library;
 
 import 'package:agent_office_app/desktop/desktop_app.dart';
-import 'package:agent_office_app/desktop/desktop_layer.dart';
 import 'package:agent_office_app/desktop/desktop_stage.dart';
-import 'package:agent_office_app/desktop/speech_bubble.dart';
-import 'package:flutter/material.dart';
+import 'package:agent_office_app/desktop/prompt_bubble.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:office_core/office_core.dart';
 
+import 'support/desktop_fixtures.dart';
 import 'support/fake_desktop_channel.dart';
+import 'support/fake_office_model.dart';
 import 'support/test_fonts.dart';
 
 void main() {
@@ -22,36 +23,27 @@ void main() {
   setUp(() => runner = FakeDesktopChannel());
   tearDown(() => runner.dispose());
 
-  testWidgets('desktop stage with the bubble open at 1280x720', (tester) async {
-    tester.view.physicalSize = const Size(1280, 720);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(
-      DesktopApp(
-        layer: DesktopLayer(),
-        windowed: true,
-        animate: false,
-        initialFolder: r'C:\work\agent-office',
-      ),
+  testWidgets('both desks working, notes on the board, flag up', (
+    tester,
+  ) async {
+    final model = FakeOfficeModel(snapshot: workingSnapshot());
+    await pumpDesktop(tester, model, windowed: true);
+    await expectLater(
+      find.byType(DesktopApp),
+      matchesGoldenFile('goldens/desktop_stage_working.png'),
     );
-    await tester.pump();
-    // One prompt already sent, so the debug list shows under the character.
-    await tester.tap(find.byKey(DesktopStage.characterKey));
+  });
+
+  testWidgets('idle office with the Claude prompt bubble open', (tester) async {
+    final model = FakeOfficeModel();
+    await pumpDesktop(tester, model, windowed: true);
+    await tester.tap(find.byKey(DesktopStage.actorKey(Seat.claude)));
     await tester.pump();
     await tester.enterText(
-      find.byKey(SpeechBubble.fieldKey),
-      'README için kısa bir kurulum bölümü yaz',
-    );
-    await tester.tap(find.byKey(SpeechBubble.sendButtonKey));
-    await tester.pump();
-    await tester.tap(find.byKey(DesktopStage.characterKey));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(SpeechBubble.fieldKey),
+      find.byKey(PromptBubble.fieldKey),
       'Widget testlerini yeşile çevir, sonra golden\'ı güncelle',
     );
     await tester.pump();
-    expect(find.byType(SpeechBubble), findsOneWidget);
     await expectLater(
       find.byType(DesktopApp),
       matchesGoldenFile('goldens/desktop_stage_bubble.png'),

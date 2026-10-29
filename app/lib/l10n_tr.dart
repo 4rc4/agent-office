@@ -29,10 +29,16 @@ abstract final class Tr {
 
   // --- desktop layer ------------------------------------------------------
   static const String whatShallWeDo = 'Ne yapalım?';
+  static const String askGpt = 'GPT ne yapsın?';
   static const String desktopPromptHint = 'Bir iş yaz… (Enter gönderir)';
   static const String noFolder = 'Klasör seçilmedi';
   static const String chooseFolder = 'Klasörü seç';
   static const String sentLabel = 'Gönderildi';
+  static const String recentFolders = 'Son klasörler';
+  static const String noSummary = 'Henüz bir şey demedi.';
+  static const String reportFailed = 'Başarısız';
+  static const String olderReports = 'Önceki raporlar';
+  static const String reportFrom = 'Rapor';
 
   // --- prompt modes -------------------------------------------------------
   static const String modeOffice = 'Ofis (Claude planlar)';

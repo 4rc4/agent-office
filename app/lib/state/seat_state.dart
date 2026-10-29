@@ -130,6 +130,7 @@ class TaskSnapshot {
     this.assignee,
     this.attempt = 0,
     this.resultSummary,
+    this.cwd = '',
   });
 
   factory TaskSnapshot.fromRecord(TaskRecord record) => TaskSnapshot(
@@ -141,6 +142,7 @@ class TaskSnapshot {
     assignee: record.assignee,
     attempt: record.attempt,
     resultSummary: record.resultSummary,
+    cwd: record.cwd,
   );
 
   final String id;
@@ -151,6 +153,30 @@ class TaskSnapshot {
   final Seat? assignee;
   final int attempt;
   final String? resultSummary;
+
+  /// Folder the task's root works in; empty when unknown.
+  final String cwd;
+}
+
+/// One finished root's report, as the mailbox keeps it.
+class OfficeReport {
+  const OfficeReport({
+    required this.rootId,
+    required this.title,
+    required this.cwd,
+    required this.text,
+    required this.finishedAt,
+    this.failed = false,
+  });
+
+  final String rootId;
+  final String title;
+  final String cwd;
+
+  /// The report (markdown) or the failure line.
+  final String text;
+  final DateTime finishedAt;
+  final bool failed;
 }
 
 /// Everything the scene and the panels render. Immutable; the controller
@@ -162,6 +188,8 @@ class OfficeSnapshot {
     this.recentEvents = const [],
     this.busy = false,
     this.lastReport,
+    this.reports = const [],
+    this.unreadReports = 0,
     this.statusLine = '',
   });
 
@@ -177,6 +205,13 @@ class OfficeSnapshot {
 
   /// The last finished root's report (markdown), for the mailbox.
   final String? lastReport;
+
+  /// Every finished root's report the controller still holds, newest first.
+  final List<OfficeReport> reports;
+
+  /// How many of [reports] arrived since the mailbox was last opened; the
+  /// mailbox flag is up while this is positive.
+  final int unreadReports;
 
   /// One line for the bottom bar ("Claude is planning...", "Office asleep").
   final String statusLine;

@@ -102,14 +102,16 @@ abstract final class Bootstrap {
 /// board is released whichever signal arrives first; [closeRuntime] must be
 /// safe to call twice.
 class OfficeLifecycleObserver with WidgetsBindingObserver {
-  OfficeLifecycleObserver({required this.ticker, required this.closeRuntime});
+  OfficeLifecycleObserver({this.ticker, required this.closeRuntime});
 
-  final OfficeTicker ticker;
+  /// The room's animation clock; the desktop stage owns its own and passes
+  /// none.
+  final OfficeTicker? ticker;
   final Future<void> Function() closeRuntime;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    ticker.onLifecycleChanged(state);
+    ticker?.onLifecycleChanged(state);
     if (state == AppLifecycleState.detached) unawaited(closeRuntime());
   }
 

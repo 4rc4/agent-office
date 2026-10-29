@@ -14,10 +14,15 @@ abstract class OfficeModel extends ChangeNotifier {
   String get cwd;
   set cwd(String value);
 
-  /// Starts a root task. With [directSeat] the prompt goes to that desk alone
-  /// (no planning, no merge); without it Claude plans and delegates.
-  /// Returns when the task has been accepted by the board, not when it ends.
-  Future<void> submit(String prompt, {Seat? directSeat});
+  /// Starts a root task in [cwd] (default: [OfficeModel.cwd]). With
+  /// [directSeat] the prompt goes to that desk alone (no planning, no merge);
+  /// without it Claude plans and delegates. Several roots may be open at
+  /// once, each in its own folder. Returns when the task has been accepted
+  /// by the board, not when it ends.
+  Future<void> submit(String prompt, {Seat? directSeat, String? cwd});
+
+  /// Clears [OfficeSnapshot.unreadReports] (the mailbox was opened).
+  void markReportsRead() {}
 
   /// Desk the user tapped; the side panel shows it. Null closes the panel.
   Seat? get selectedSeat;

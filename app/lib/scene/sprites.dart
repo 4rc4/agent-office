@@ -393,37 +393,46 @@ void drawCharacter(
   int clipBottom = 1 << 20,
 }) {
   final rows = buildCharacterRows(pose, style);
-  b.sprite(x, y + pose.dy - spriteEarRows, rows, {
-    'O': palette.hairOutline,
-    'H': palette.hairLight,
-    'h': palette.hair,
-    'd': palette.hairDark,
-    'k': CharacterPalette.skinOutline,
-    'L': CharacterPalette.skinLight,
-    's': CharacterPalette.skin,
-    'S': CharacterPalette.skinShade,
-    'q': palette.bodyOutline,
-    'B': palette.bodyLight,
-    'b': palette.body,
-    'D': palette.bodyDark,
-    'Q': CharacterPalette.pantsOutline,
-    'p': CharacterPalette.pants,
-    'P': CharacterPalette.pantsDark,
-    'x': CharacterPalette.shoe,
-    'X': CharacterPalette.shoeLight,
-    'e': Palette.ink,
-    'E': Palette.creamLight,
-    'm': CharacterPalette.skinOutline,
-    'g': Palette.steelShade,
-    'n': Palette.pink,
-    'c': Palette.cream,
-    'C': Palette.creamDark,
-    'z': Palette.steam,
-    'W': Palette.paper,
-    'V': Palette.paperShade,
-    'l': Palette.paperLine,
-  }, clipBottom: clipBottom);
+  b.sprite(
+    x,
+    y + pose.dy - spriteEarRows,
+    rows,
+    characterLegend(palette),
+    clipBottom: clipBottom,
+  );
 }
+
+/// Colour of every legend character of [buildCharacterRows] for [palette].
+Map<String, int> characterLegend(CharacterPalette palette) => {
+  'O': palette.hairOutline,
+  'H': palette.hairLight,
+  'h': palette.hair,
+  'd': palette.hairDark,
+  'k': CharacterPalette.skinOutline,
+  'L': CharacterPalette.skinLight,
+  's': CharacterPalette.skin,
+  'S': CharacterPalette.skinShade,
+  'q': palette.bodyOutline,
+  'B': palette.bodyLight,
+  'b': palette.body,
+  'D': palette.bodyDark,
+  'Q': CharacterPalette.pantsOutline,
+  'p': CharacterPalette.pants,
+  'P': CharacterPalette.pantsDark,
+  'x': CharacterPalette.shoe,
+  'X': CharacterPalette.shoeLight,
+  'e': Palette.ink,
+  'E': Palette.creamLight,
+  'm': CharacterPalette.skinOutline,
+  'g': Palette.steelShade,
+  'n': Palette.pink,
+  'c': Palette.cream,
+  'C': Palette.creamDark,
+  'z': Palette.steam,
+  'W': Palette.paper,
+  'V': Palette.paperShade,
+  'l': Palette.paperLine,
+};
 
 /// Two hands over a 22-wide keyboard whose top-left is (kbX, kbY). With
 /// [animate] the hands alternate lifting one pixel every two frames.

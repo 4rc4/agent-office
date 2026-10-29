@@ -5,10 +5,11 @@ import 'package:office_core/office_core.dart';
 
 /// One recorded [OfficeModel.submit] call.
 class Submission {
-  const Submission(this.prompt, this.directSeat);
+  const Submission(this.prompt, this.directSeat, [this.cwd]);
 
   final String prompt;
   final Seat? directSeat;
+  final String? cwd;
 }
 
 /// Hand-rolled [OfficeModel] for widget tests and goldens: records calls and
@@ -44,9 +45,16 @@ class FakeOfficeModel extends ChangeNotifier implements OfficeModel {
   }
 
   @override
-  Future<void> submit(String prompt, {Seat? directSeat}) async {
+  Future<void> submit(String prompt, {Seat? directSeat, String? cwd}) async {
     if (submitError != null) throw submitError!;
-    submissions.add(Submission(prompt, directSeat));
+    submissions.add(Submission(prompt, directSeat, cwd));
+  }
+
+  int markReadCalls = 0;
+
+  @override
+  void markReportsRead() {
+    markReadCalls++;
   }
 
   @override

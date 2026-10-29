@@ -150,6 +150,9 @@ class OfficeController extends OfficeModel {
   /// How many finished tasks stay on the whiteboard next to the open ones.
   final int maxRecentTerminal;
 
+  /// How many reports the mailbox keeps.
+  static const int maxReports = 20;
+
   /// Stops the office; injected by the runtime (it closes the `Office`).
   /// Without it [stopAll] is a no-op.
   Future<void> Function()? onStopAll;
@@ -168,6 +171,8 @@ class OfficeController extends OfficeModel {
   late OfficeSnapshot _snapshot;
   String _cwd;
   String? _lastReport;
+  final List<OfficeReport> _reports = [];
+  int _unreadReports = 0;
   String? _errorLine;
   _Outcome _lastOutcome = _Outcome.none;
   Seat? _selectedSeat;
@@ -209,22 +214,24 @@ class OfficeController extends OfficeModel {
     }
   }
 
-  /// Throws [StateError] while a root is in flight. Any other failure to start
-  /// is not thrown: it lands in [OfficeSnapshot.statusLine] and marks the seat
+  /// Starts a root in [cwd] (default: the controller's [OfficeModel.cwd]).
+  /// Several roots may run at once, each in its own folder; a seat that is
+  /// taken makes the new subtask wait on the board. A failure to start is
+  /// not thrown: it lands in [OfficeSnapshot.statusLine] and marks the seat
   /// that should have started as [SeatVisual.failed]. Returns once the board
   /// holds the new root; the run itself continues in the background.
   @override
-  Future<void> submit(String prompt, {Seat? directSeat}) async {
+  Future<void> submit(String prompt, {Seat? directSeat, String? cwd}) async {
     if (_disposed) throw StateError('office controller is disposed');
-    if (isBusy) throw StateError('Ofis meşgul: önce açık görev bitsin.');
     _errorLine = null;
     _lastOutcome = _Outcome.none;
+    final folder = cwd ?? _cwd;
     final seat = directSeat ?? supervisor.brainSeat;
     final Future<TaskRecord> run;
     try {
       run = directSeat == null
-          ? supervisor.run(prompt, _cwd)
-          : supervisor.runDirect(directSeat, prompt, _cwd);
+          ? supervisor.run(prompt, folder)
+          : supervisor.runDirect(directSeat, prompt, folder);
     } on Object catch (error) {
       _failToStart(seat, error);
       _flush(force: true);
@@ -264,6 +271,13 @@ class OfficeController extends OfficeModel {
       _errorLine = 'Durdurma hatası: ${_shortLine('$error', fallback: '?')}';
     }
     _flush(force: true);
+  }
+
+  @override
+  void markReportsRead() {
+    if (_unreadReports == 0) return;
+    _unreadReports = 0;
+    _markDirty();
   }
 
   /// Puts [message] on the status line until the next [submit].
@@ -337,14 +351,25 @@ class OfficeController extends OfficeModel {
     if (_disposed) return;
     _seen[task.id] = task;
     _pruneSeen();
-    if (task.kind == TaskKind.root && task.status.isTerminal) {
-      if (task.status == TaskStatus.done) {
-        _lastReport = task.resultSummary;
-        _lastOutcome = _Outcome.done;
-      } else {
-        _lastReport = _failureReport(task);
-        _lastOutcome = _Outcome.failed;
-      }
+    if (task.kind == TaskKind.root &&
+        task.status.isTerminal &&
+        !_reports.any((r) => r.rootId == task.id)) {
+      final done = task.status == TaskStatus.done;
+      _lastReport = done ? task.resultSummary : _failureReport(task);
+      _lastOutcome = done ? _Outcome.done : _Outcome.failed;
+      _reports.insert(
+        0,
+        OfficeReport(
+          rootId: task.id,
+          title: task.title,
+          cwd: task.cwd,
+          text: _lastReport ?? '',
+          finishedAt: task.updatedAt,
+          failed: !done,
+        ),
+      );
+      if (_reports.length > maxReports) _reports.removeLast();
+      _unreadReports++;
     }
     _markDirty();
   }
@@ -426,6 +451,8 @@ class OfficeController extends OfficeModel {
     seats: [for (final seat in Seat.values) _seats[seat]!],
     recentEvents: List.unmodifiable(_recentEvents),
     lastReport: _lastReport,
+    reports: List.unmodifiable(_reports),
+    unreadReports: _unreadReports,
     statusLine: _errorLine ?? 'Ofis durduruldu.',
   );
 
@@ -453,6 +480,8 @@ class OfficeController extends OfficeModel {
       recentEvents: List.unmodifiable(_recentEvents),
       busy: _hasOpenRoot(open),
       lastReport: _lastReport,
+      reports: List.unmodifiable(_reports),
+      unreadReports: _unreadReports,
       statusLine: _statusLine(open, seats),
     );
   }

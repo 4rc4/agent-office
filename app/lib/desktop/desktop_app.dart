@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../l10n_tr.dart';
+import '../runtime/office_settings.dart';
+import '../state/office_model.dart';
 import '../widgets/office_theme.dart';
 import 'desktop_layer.dart';
 import 'desktop_stage.dart';
@@ -12,16 +14,20 @@ import 'desktop_stage.dart';
 class DesktopApp extends StatelessWidget {
   const DesktopApp({
     super.key,
+    required this.model,
     required this.layer,
+    required this.settings,
+    this.onSettingsChanged,
     this.windowed = false,
     this.animate = true,
-    this.initialFolder,
   });
 
+  final OfficeModel model;
   final DesktopLayer layer;
+  final OfficeSettings settings;
+  final ValueChanged<OfficeSettings>? onSettingsChanged;
   final bool windowed;
   final bool animate;
-  final String? initialFolder;
 
   @override
   Widget build(BuildContext context) {
@@ -34,10 +40,12 @@ class DesktopApp extends StatelessWidget {
       themeMode: ThemeMode.dark,
       color: const Color(0x00000000),
       home: DesktopStage(
+        model: model,
         layer: layer,
+        settings: settings,
+        onSettingsChanged: onSettingsChanged,
         windowed: windowed,
         animate: animate,
-        initialFolder: initialFolder,
       ),
     );
   }

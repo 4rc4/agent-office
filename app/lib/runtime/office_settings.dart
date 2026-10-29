@@ -16,6 +16,8 @@ class OfficeSettings {
     this.fake = false,
     this.brainFile,
     this.fixturesDir,
+    this.stationPositions = const {},
+    this.recentFolders = const [],
   });
 
   /// Defaults with the current folder as the repository.
@@ -36,6 +38,24 @@ class OfficeSettings {
       return value is String && value.trim().isNotEmpty ? value : null;
     }
 
+    final positions = <String, double>{};
+    final rawPositions = json['stationPositions'];
+    if (rawPositions is Map) {
+      for (final entry in rawPositions.entries) {
+        final value = entry.value;
+        if (entry.key is String && value is num) {
+          positions[entry.key as String] = value.toDouble();
+        }
+      }
+    }
+    final rawFolders = json['recentFolders'];
+    final folders = rawFolders is List
+        ? [
+            for (final f in rawFolders)
+              if (f is String && f.trim().isNotEmpty) f,
+          ]
+        : const <String>[];
+
     return OfficeSettings(
       cwd: text('cwd', defaults.cwd),
       claudeExecutable: text('claudeExecutable', defaults.claudeExecutable),
@@ -44,8 +64,13 @@ class OfficeSettings {
       fake: json['fake'] is bool ? json['fake'] as bool : defaults.fake,
       brainFile: optional('brainFile'),
       fixturesDir: optional('fixturesDir'),
+      stationPositions: positions,
+      recentFolders: folders,
     );
   }
+
+  /// How many folders [recentFolders] keeps.
+  static const int maxRecentFolders = 5;
 
   /// File name inside the settings directory.
   static const String fileName = 'settings.json';
@@ -73,6 +98,21 @@ class OfficeSettings {
   /// source but not from a built app.
   final String? fixturesDir;
 
+  /// Where the desktop stations stand: station name to the centre's
+  /// fraction of the screen width (0..1). Missing stations use defaults.
+  final Map<String, double> stationPositions;
+
+  /// Folders the user sent prompts in, most recent first, at most
+  /// [maxRecentFolders].
+  final List<String> recentFolders;
+
+  /// [recentFolders] with [folder] moved to the front.
+  List<String> withRecentFolder(String folder) => [
+    folder,
+    for (final f in recentFolders)
+      if (f != folder) f,
+  ].take(maxRecentFolders).toList();
+
   Map<String, Object?> toJson() => {
     'cwd': cwd,
     'claudeExecutable': claudeExecutable,
@@ -81,6 +121,8 @@ class OfficeSettings {
     'fake': fake,
     'brainFile': brainFile,
     'fixturesDir': fixturesDir,
+    'stationPositions': stationPositions,
+    'recentFolders': recentFolders,
   };
 
   OfficeSettings copyWith({
@@ -93,6 +135,8 @@ class OfficeSettings {
     bool clearBrainFile = false,
     String? fixturesDir,
     bool clearFixturesDir = false,
+    Map<String, double>? stationPositions,
+    List<String>? recentFolders,
   }) {
     return OfficeSettings(
       cwd: cwd ?? this.cwd,
@@ -102,6 +146,8 @@ class OfficeSettings {
       fake: fake ?? this.fake,
       brainFile: clearBrainFile ? null : (brainFile ?? this.brainFile),
       fixturesDir: clearFixturesDir ? null : (fixturesDir ?? this.fixturesDir),
+      stationPositions: stationPositions ?? this.stationPositions,
+      recentFolders: recentFolders ?? this.recentFolders,
     );
   }
 
@@ -148,7 +194,9 @@ class OfficeSettings {
       other.permissionMode == permissionMode &&
       other.fake == fake &&
       other.brainFile == brainFile &&
-      other.fixturesDir == fixturesDir;
+      other.fixturesDir == fixturesDir &&
+      _sameMap(other.stationPositions, stationPositions) &&
+      _sameList(other.recentFolders, recentFolders);
 
   @override
   int get hashCode => Object.hash(
@@ -159,7 +207,27 @@ class OfficeSettings {
     fake,
     brainFile,
     fixturesDir,
+    Object.hashAllUnordered([
+      for (final e in stationPositions.entries) Object.hash(e.key, e.value),
+    ]),
+    Object.hashAll(recentFolders),
   );
+
+  static bool _sameMap(Map<String, double> a, Map<String, double> b) {
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (b[entry.key] != entry.value) return false;
+    }
+    return true;
+  }
+
+  static bool _sameList(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 
   @override
   String toString() => 'OfficeSettings(${jsonEncode(toJson())})';

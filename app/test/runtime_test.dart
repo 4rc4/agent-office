@@ -31,7 +31,7 @@ class FakeModel extends OfficeModel {
   String cwd = '/repo';
 
   @override
-  Future<void> submit(String prompt, {Seat? directSeat}) async {}
+  Future<void> submit(String prompt, {Seat? directSeat, String? cwd}) async {}
 
   @override
   Seat? get selectedSeat => _selected;
