@@ -104,6 +104,8 @@ Future<void> pumpDesktop(
   double dpr = 1,
   bool windowed = false,
   ValueChanged<OfficeSettings>? onSettingsChanged,
+  OfficeSettings settings = testSettings,
+  Future<List<String>> Function()? pickFiles,
 }) async {
   tester.view.physicalSize = size * dpr;
   tester.view.devicePixelRatio = dpr;
@@ -112,8 +114,9 @@ Future<void> pumpDesktop(
     DesktopApp(
       model: model,
       layer: DesktopLayer(),
-      settings: testSettings,
+      settings: settings,
       onSettingsChanged: onSettingsChanged,
+      pickFiles: pickFiles,
       windowed: windowed,
       animate: false,
     ),

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' show AppLifecycleState;
 
+import 'package:agent_office_app/desktop/model_choices.dart';
 import 'package:agent_office_app/runtime/office_runtime.dart';
 import 'package:agent_office_app/runtime/office_settings.dart';
 import 'package:agent_office_app/state/office_model.dart';
@@ -31,7 +32,12 @@ class FakeModel extends OfficeModel {
   String cwd = '/repo';
 
   @override
-  Future<void> submit(String prompt, {Seat? directSeat, String? cwd}) async {}
+  Future<void> submit(
+    String prompt, {
+    Seat? directSeat,
+    String? cwd,
+    PromptOptions options = const PromptOptions(),
+  }) async {}
 
   @override
   Seat? get selectedSeat => _selected;

@@ -17,6 +17,7 @@ import 'bubble_sheet.dart';
 import 'desktop_layer.dart';
 import 'desktop_painter.dart';
 import 'info_bubbles.dart';
+import 'model_choices.dart';
 import 'office_actors.dart';
 import 'prompt_bubble.dart';
 import 'settings_bubble.dart';
@@ -77,6 +78,7 @@ class DesktopStage extends StatefulWidget {
     this.commands,
     this.autostart = const NoAutostart(),
     this.initialWallpaper,
+    this.pickFiles,
     this.windowed = false,
     this.animate = true,
   });
@@ -116,6 +118,10 @@ class DesktopStage extends StatefulWidget {
   /// window shows); null paints the desktop background colour.
   final DesktopWallpaper? initialWallpaper;
 
+  /// Picks files to attach to a prompt; null uses the native picker
+  /// (`openFiles`). Tests inject a fake.
+  final Future<List<String>> Function()? pickFiles;
+
   /// Plain window fallback (`--window`): dark background, no wallpaper.
   final bool windowed;
 
@@ -141,6 +147,8 @@ class _DesktopStageState extends State<DesktopStage> {
   late String? _folder =
       _settings.recentFolders.firstOrNull ?? widget.model.cwd;
   final GlobalKey _bubbleKey = GlobalKey();
+  PromptOptions _options = const PromptOptions();
+  List<String> _attachments = const [];
   final FocusNode _stageFocus = FocusNode(debugLabel: 'desktopStage');
   List<Rect> _reportedRects = const [];
 
@@ -263,6 +271,10 @@ class _DesktopStageState extends State<DesktopStage> {
       SeatVisual.idle || SeatVisual.empty || SeatVisual.sleeping => true,
       _ => false,
     };
+    if (idle) {
+      _options = _settings.defaultOptions(seat);
+      _attachments = const [];
+    }
     _open(
       _OpenBubble(idle ? _BubbleKind.prompt : _BubbleKind.status, seat: seat),
     );
@@ -290,19 +302,43 @@ class _DesktopStageState extends State<DesktopStage> {
 
   Future<void> _send(Seat seat, String prompt) async {
     final folder = _folder ?? widget.model.cwd;
+    final text = '$prompt${attachmentSuffix(_attachments)}';
+    final options = _options;
+    _attachments = const [];
     _closeBubble();
     _updateSettings(
       _settings.copyWith(recentFolders: _settings.withRecentFolder(folder)),
     );
     try {
       await widget.model.submit(
-        prompt,
+        text,
         directSeat: seat == Seat.gpt ? Seat.gpt : null,
         cwd: folder,
+        options: options,
       );
     } on Object catch (error) {
       debugPrint('desktop stage: submit failed: $error');
     }
+  }
+
+  Future<void> _pickFiles() async {
+    List<String> picked;
+    try {
+      final custom = widget.pickFiles;
+      picked = custom != null
+          ? await custom()
+          : [for (final f in await openFiles()) f.path];
+    } on MissingPluginException {
+      return;
+    }
+    if (!mounted || picked.isEmpty) return;
+    setState(() {
+      _attachments = [
+        ..._attachments,
+        for (final path in picked)
+          if (!_attachments.contains(path)) path,
+      ];
+    });
   }
 
   Future<void> _pickFolder() async {
@@ -576,6 +612,17 @@ class _DesktopStageState extends State<DesktopStage> {
         folder: _folder,
         recentFolders: _settings.recentFolders,
         pointerX: pointerX,
+        seat: bubble.seat!,
+        options: _options,
+        onOptionsChanged: (o) => setState(() => _options = o),
+        attachments: _attachments,
+        onPickFiles: _pickFiles,
+        onRemoveAttachment: (path) => setState(() {
+          _attachments = [
+            for (final a in _attachments)
+              if (a != path) a,
+          ];
+        }),
         onSend: (prompt) => _send(bubble.seat!, prompt),
         onClose: _closeBubble,
         onPickFolder: _pickFolder,

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:office_core/office_core.dart';
 
+import '../desktop/model_choices.dart';
 import 'seat_state.dart';
 
 /// What the widgets talk to. The real implementation (OfficeController) wraps
@@ -16,10 +17,16 @@ abstract class OfficeModel extends ChangeNotifier {
 
   /// Starts a root task in [cwd] (default: [OfficeModel.cwd]). With
   /// [directSeat] the prompt goes to that desk alone (no planning, no merge);
-  /// without it Claude plans and delegates. Several roots may be open at
-  /// once, each in its own folder. Returns when the task has been accepted
-  /// by the board, not when it ends.
-  Future<void> submit(String prompt, {Seat? directSeat, String? cwd});
+  /// without it Claude plans and delegates. [options] pick the model and
+  /// effort of the run. Several roots may be open at once, each in its own
+  /// folder. Returns when the task has been accepted by the board, not when
+  /// it ends.
+  Future<void> submit(
+    String prompt, {
+    Seat? directSeat,
+    String? cwd,
+    PromptOptions options = const PromptOptions(),
+  });
 
   /// Clears [OfficeSnapshot.unreadReports] (the mailbox was opened).
   void markReportsRead() {}

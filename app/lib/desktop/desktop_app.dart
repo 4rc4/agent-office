@@ -23,6 +23,7 @@ class DesktopApp extends StatelessWidget {
     this.commands,
     this.autostart = const NoAutostart(),
     this.wallpaper,
+    this.pickFiles,
     this.windowed = false,
     this.animate = true,
   });
@@ -37,6 +38,9 @@ class DesktopApp extends StatelessWidget {
   /// The wallpaper copy for the first frame, see
   /// [DesktopStage.initialWallpaper].
   final DesktopWallpaper? wallpaper;
+
+  /// Replaces the native file picker, see [DesktopStage.pickFiles].
+  final Future<List<String>> Function()? pickFiles;
   final bool windowed;
   final bool animate;
 
@@ -58,6 +62,7 @@ class DesktopApp extends StatelessWidget {
         commands: commands,
         autostart: autostart,
         initialWallpaper: wallpaper,
+        pickFiles: pickFiles,
         windowed: windowed,
         animate: animate,
       ),

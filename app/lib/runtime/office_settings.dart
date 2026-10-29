@@ -2,7 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:office_core/office_core.dart';
 import 'package:path_provider/path_provider.dart';
+
+import '../desktop/model_choices.dart';
 
 /// What the window needs to build an office: where the agents work, which
 /// binaries they are, and whether vendor output is faked. Stored as JSON in
@@ -18,6 +21,10 @@ class OfficeSettings {
     this.fixturesDir,
     this.stationPositions = const {},
     this.recentFolders = const [],
+    this.claudeModel = '',
+    this.claudeEffort = '',
+    this.codexModel = '',
+    this.codexEffort = '',
   });
 
   /// Defaults with the current folder as the repository.
@@ -44,7 +51,9 @@ class OfficeSettings {
       for (final entry in rawPositions.entries) {
         final value = entry.value;
         if (entry.key is String && value is num) {
-          positions[entry.key as String] = value.toDouble();
+          // The TV took the coffee machine's place (and its saved spot).
+          final key = entry.key == 'coffee' ? 'tv' : entry.key as String;
+          positions.putIfAbsent(key, () => value.toDouble());
         }
       }
     }
@@ -66,6 +75,10 @@ class OfficeSettings {
       fixturesDir: optional('fixturesDir'),
       stationPositions: positions,
       recentFolders: folders,
+      claudeModel: text('claudeModel', ''),
+      claudeEffort: text('claudeEffort', ''),
+      codexModel: text('codexModel', ''),
+      codexEffort: text('codexEffort', ''),
     );
   }
 
@@ -106,6 +119,18 @@ class OfficeSettings {
   /// [maxRecentFolders].
   final List<String> recentFolders;
 
+  /// Default model and effort per seat (`--model`/`--effort` for Claude,
+  /// `-m`/`model_reasoning_effort` for Codex); empty leaves the CLI's own.
+  final String claudeModel;
+  final String claudeEffort;
+  final String codexModel;
+  final String codexEffort;
+
+  /// The prompt options a bubble for [seat] starts with.
+  PromptOptions defaultOptions(Seat seat) => seat == Seat.gpt
+      ? PromptOptions(model: codexModel, effort: codexEffort)
+      : PromptOptions(model: claudeModel, effort: claudeEffort);
+
   /// [recentFolders] with [folder] moved to the front.
   List<String> withRecentFolder(String folder) => [
     folder,
@@ -123,6 +148,10 @@ class OfficeSettings {
     'fixturesDir': fixturesDir,
     'stationPositions': stationPositions,
     'recentFolders': recentFolders,
+    'claudeModel': claudeModel,
+    'claudeEffort': claudeEffort,
+    'codexModel': codexModel,
+    'codexEffort': codexEffort,
   };
 
   OfficeSettings copyWith({
@@ -137,6 +166,10 @@ class OfficeSettings {
     bool clearFixturesDir = false,
     Map<String, double>? stationPositions,
     List<String>? recentFolders,
+    String? claudeModel,
+    String? claudeEffort,
+    String? codexModel,
+    String? codexEffort,
   }) {
     return OfficeSettings(
       cwd: cwd ?? this.cwd,
@@ -148,6 +181,10 @@ class OfficeSettings {
       fixturesDir: clearFixturesDir ? null : (fixturesDir ?? this.fixturesDir),
       stationPositions: stationPositions ?? this.stationPositions,
       recentFolders: recentFolders ?? this.recentFolders,
+      claudeModel: claudeModel ?? this.claudeModel,
+      claudeEffort: claudeEffort ?? this.claudeEffort,
+      codexModel: codexModel ?? this.codexModel,
+      codexEffort: codexEffort ?? this.codexEffort,
     );
   }
 
@@ -196,7 +233,11 @@ class OfficeSettings {
       other.brainFile == brainFile &&
       other.fixturesDir == fixturesDir &&
       _sameMap(other.stationPositions, stationPositions) &&
-      _sameList(other.recentFolders, recentFolders);
+      _sameList(other.recentFolders, recentFolders) &&
+      other.claudeModel == claudeModel &&
+      other.claudeEffort == claudeEffort &&
+      other.codexModel == codexModel &&
+      other.codexEffort == codexEffort;
 
   @override
   int get hashCode => Object.hash(
@@ -211,6 +252,10 @@ class OfficeSettings {
       for (final e in stationPositions.entries) Object.hash(e.key, e.value),
     ]),
     Object.hashAll(recentFolders),
+    claudeModel,
+    claudeEffort,
+    codexModel,
+    codexEffort,
   );
 
   static bool _sameMap(Map<String, double> a, Map<String, double> b) {

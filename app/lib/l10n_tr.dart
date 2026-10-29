@@ -39,6 +39,29 @@ abstract final class Tr {
   static const String reportFailed = 'Başarısız';
   static const String olderReports = 'Önceki raporlar';
   static const String reportFrom = 'Rapor';
+  static const String model = 'Model';
+  static const String effort = 'Düşünme';
+  static const String defaultChoice = 'Varsayılan';
+  static const String files = 'Dosya';
+  static const String attachedFiles = 'Ekli dosyalar (yoluyla oku)';
+  static const String claudeModel = 'Claude modeli';
+  static const String claudeEffort = 'Claude düşünme';
+  static const String codexModel = 'Codex modeli';
+  static const String codexEffort = 'Codex düşünme';
+
+  /// Display name of an effort level; unknown levels show as they are.
+  static String effortLabel(String effort) => switch (effort) {
+    '' => defaultChoice,
+    'low' => 'düşük',
+    'medium' => 'orta',
+    'high' => 'yüksek',
+    'max' => 'azami',
+    _ => effort,
+  };
+
+  /// Display name of a model choice; empty is the CLI default.
+  static String modelLabel(String model) =>
+      model.isEmpty ? defaultChoice : model;
 
   // --- tray and settings --------------------------------------------------
   static const String pause = 'Duraklat';

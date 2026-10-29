@@ -7,6 +7,7 @@ import '../runtime/office_settings.dart';
 import '../widgets/office_theme.dart';
 import 'autostart.dart';
 import 'bubble_sheet.dart';
+import 'model_choices.dart';
 
 /// The settings sheet (opened from the tray): the `claude` and `codex`
 /// executables with "Bul" file pickers, the permission mode, the fake mode
@@ -30,6 +31,10 @@ class SettingsBubble extends StatefulWidget {
   static const Key fakeKey = Key('settings.fake');
   static const Key autostartKey = Key('settings.autostart');
   static const Key saveKey = Key('settings.save');
+  static const Key claudeModelKey = Key('settings.claudeModel');
+  static const Key claudeEffortKey = Key('settings.claudeEffort');
+  static const Key codexModelKey = Key('settings.codexModel');
+  static const Key codexEffortKey = Key('settings.codexEffort');
 
   static const double width = 380;
 
@@ -60,6 +65,10 @@ class _SettingsBubbleState extends State<SettingsBubble> {
   );
   late String _mode = widget.settings.permissionMode;
   late bool _fake = widget.settings.fake;
+  late String _claudeModel = widget.settings.claudeModel;
+  late String _claudeEffort = widget.settings.claudeEffort;
+  late String _codexModel = widget.settings.codexModel;
+  late String _codexEffort = widget.settings.codexEffort;
   bool _autostart = false;
 
   @override
@@ -107,6 +116,10 @@ class _SettingsBubbleState extends State<SettingsBubble> {
             : _codex.text.trim(),
         permissionMode: _mode,
         fake: _fake,
+        claudeModel: _claudeModel,
+        claudeEffort: _claudeEffort,
+        codexModel: _codexModel,
+        codexEffort: _codexEffort,
       ),
     );
     widget.onClose();
@@ -160,6 +173,38 @@ class _SettingsBubbleState extends State<SettingsBubble> {
                 },
               ),
             ],
+          ),
+          _choiceRow(
+            Tr.claudeModel,
+            SettingsBubble.claudeModelKey,
+            _claudeModel,
+            ['', ...ModelChoices.claudeModels],
+            Tr.modelLabel,
+            (v) => setState(() => _claudeModel = v),
+          ),
+          _choiceRow(
+            Tr.claudeEffort,
+            SettingsBubble.claudeEffortKey,
+            _claudeEffort,
+            ['', ...ModelChoices.claudeEfforts],
+            Tr.effortLabel,
+            (v) => setState(() => _claudeEffort = v),
+          ),
+          _choiceRow(
+            Tr.codexModel,
+            SettingsBubble.codexModelKey,
+            _codexModel,
+            ['', ...ModelChoices.codexModels],
+            Tr.modelLabel,
+            (v) => setState(() => _codexModel = v),
+          ),
+          _choiceRow(
+            Tr.codexEffort,
+            SettingsBubble.codexEffortKey,
+            _codexEffort,
+            ['', ...ModelChoices.codexEfforts],
+            Tr.effortLabel,
+            (v) => setState(() => _codexEffort = v),
           ),
           _switchRow(
             Tr.fakeMode,
@@ -232,6 +277,37 @@ class _SettingsBubbleState extends State<SettingsBubble> {
           key: findKey,
           label: Tr.find,
           onPressed: () => _find(controller),
+        ),
+      ],
+    );
+  }
+
+  /// A labelled dropdown; a saved value outside [choices] stays selectable.
+  Widget _choiceRow(
+    String label,
+    Key key,
+    String value,
+    List<String> choices,
+    String Function(String) labelOf,
+    ValueChanged<String> onChanged,
+  ) {
+    final items = [...choices, if (!choices.contains(value)) value];
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: PixelText.muted)),
+        DropdownButton<String>(
+          key: key,
+          value: value,
+          isDense: true,
+          style: PixelText.body,
+          dropdownColor: PixelColors.paperLight,
+          items: [
+            for (final choice in items)
+              DropdownMenuItem(value: choice, child: Text(labelOf(choice))),
+          ],
+          onChanged: (choice) {
+            if (choice != null) onChanged(choice);
+          },
         ),
       ],
     );

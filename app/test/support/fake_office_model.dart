@@ -1,3 +1,4 @@
+import 'package:agent_office_app/desktop/model_choices.dart';
 import 'package:agent_office_app/state/office_model.dart';
 import 'package:agent_office_app/state/seat_state.dart';
 import 'package:flutter/foundation.dart';
@@ -5,11 +6,17 @@ import 'package:office_core/office_core.dart';
 
 /// One recorded [OfficeModel.submit] call.
 class Submission {
-  const Submission(this.prompt, this.directSeat, [this.cwd]);
+  const Submission(
+    this.prompt,
+    this.directSeat, [
+    this.cwd,
+    this.options = const PromptOptions(),
+  ]);
 
   final String prompt;
   final Seat? directSeat;
   final String? cwd;
+  final PromptOptions options;
 }
 
 /// Hand-rolled [OfficeModel] for widget tests and goldens: records calls and
@@ -45,9 +52,14 @@ class FakeOfficeModel extends ChangeNotifier implements OfficeModel {
   }
 
   @override
-  Future<void> submit(String prompt, {Seat? directSeat, String? cwd}) async {
+  Future<void> submit(
+    String prompt, {
+    Seat? directSeat,
+    String? cwd,
+    PromptOptions options = const PromptOptions(),
+  }) async {
     if (submitError != null) throw submitError!;
-    submissions.add(Submission(prompt, directSeat, cwd));
+    submissions.add(Submission(prompt, directSeat, cwd, options));
   }
 
   int markReadCalls = 0;

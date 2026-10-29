@@ -50,6 +50,10 @@ class OfficeRuntime {
       brainPromptFile: await resolveBrainFile(settings),
       fake: settings.fake,
       fixturesDir: settings.fixturesDir,
+      claudeModel: settings.claudeModel,
+      claudeEffort: settings.claudeEffort,
+      codexModel: settings.codexModel,
+      codexEffort: settings.codexEffort,
     );
     final office = await buildOffice(config, board: board);
     final controller = OfficeController(

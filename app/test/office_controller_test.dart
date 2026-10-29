@@ -74,6 +74,13 @@ class ScriptedRun implements AgentRun {
   Future<AgentResult> get turnDone => _turn.future;
 
   @override
+  Future<void> answerApproval(
+    String requestId, {
+    required bool allow,
+    String? message,
+  }) async {}
+
+  @override
   String? get sessionRef => ref;
 
   @override

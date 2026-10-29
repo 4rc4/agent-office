@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:office_core/office_core.dart';
 
 import 'office_model.dart';
+import '../desktop/model_choices.dart';
 import 'seat_state.dart';
 
 /// Display name of a desk, as the status bar says it.
@@ -101,11 +102,12 @@ String _shortLine(String text, {required String fallback, int max = 60}) {
 enum _Outcome { none, done, failed }
 
 class _HeldPrompt {
-  const _HeldPrompt(this.prompt, this.directSeat, this.cwd);
+  const _HeldPrompt(this.prompt, this.directSeat, this.cwd, this.options);
 
   final String prompt;
   final Seat? directSeat;
   final String cwd;
+  final PromptOptions options;
 }
 
 class _PendingIdle {
@@ -231,11 +233,16 @@ class OfficeController extends OfficeModel {
   /// that should have started as [SeatVisual.failed]. Returns once the board
   /// holds the new root; the run itself continues in the background.
   @override
-  Future<void> submit(String prompt, {Seat? directSeat, String? cwd}) async {
+  Future<void> submit(
+    String prompt, {
+    Seat? directSeat,
+    String? cwd,
+    PromptOptions options = const PromptOptions(),
+  }) async {
     if (_disposed) throw StateError('office controller is disposed');
     final folder = cwd ?? _cwd;
     if (_paused) {
-      _held.add(_HeldPrompt(prompt, directSeat, folder));
+      _held.add(_HeldPrompt(prompt, directSeat, folder, options));
       _flush(force: true);
       return;
     }
@@ -245,8 +252,13 @@ class OfficeController extends OfficeModel {
     final Future<TaskRecord> run;
     try {
       run = directSeat == null
-          ? supervisor.run(prompt, folder)
-          : supervisor.runDirect(directSeat, prompt, folder);
+          ? supervisor.run(prompt, folder, options: options.toMap())
+          : supervisor.runDirect(
+              directSeat,
+              prompt,
+              folder,
+              options: options.toMap(),
+            );
     } on Object catch (error) {
       _failToStart(seat, error);
       _flush(force: true);
@@ -301,7 +313,12 @@ class OfficeController extends OfficeModel {
       final held = List.of(_held);
       _held.clear();
       for (final h in held) {
-        await submit(h.prompt, directSeat: h.directSeat, cwd: h.cwd);
+        await submit(
+          h.prompt,
+          directSeat: h.directSeat,
+          cwd: h.cwd,
+          options: h.options,
+        );
       }
     }
     _flush(force: true);
